@@ -1,5 +1,9 @@
 # jw2opds
 
+> **Unofficial, third-party project.** Not created by, affiliated with,
+> endorsed by, or connected in any way to jw.org, Jehovah's Witnesses, or the
+> Watch Tower Bible and Tract Society. See [Disclaimer](#disclaimer) below.
+
 Generates a static [OPDS](https://en.wikipedia.org/wiki/Open_Publication_Distribution_System)
 catalog for jw.org's EPUB publications (Bible, books, brochures, Watchtower,
 Awake!, meeting workbook, daily text), so you can browse and download them
@@ -8,9 +12,10 @@ Reader, etc.).
 
 ## Disclaimer
 
-**This project is not affiliated with, endorsed by, or connected in any way
-to jw.org, Jehovah's Witnesses, or the Watch Tower Bible and Tract Society.**
-It is an independent, unofficial tool.
+**This project was not created by, and is not affiliated with, endorsed by,
+or connected in any way to jw.org, Jehovah's Witnesses, or the Watch Tower
+Bible and Tract Society.** It is an independent, unofficial tool built by a
+third party.
 
 `jw2opds` does not host, store, mirror, or redistribute any content. It does
 not provide EPUB files, cover images, or any other publication data itself.
