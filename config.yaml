@@ -18,5 +18,5 @@ periodical_lookback_months: 0
 recheck_days: 30
 concurrency: 8
 request_timeout: 15
-base_url: ""
+base_url: "https://ca-za.github.io/jwOPDS"
 user_agent: "jw2opds/1.0 (+personal OPDS catalog generator; https://www.jw.org publications)"

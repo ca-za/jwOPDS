@@ -155,6 +155,9 @@ def _entry_element(feed: ET.Element, locale: str, base_url: str, row: dict) -> N
             type=EPUB_TYPE,
             length=str(row.get("filesize") or 0),
         )
+        # RFC 4287 4.1.2: an entry with no atom:content MUST have a
+        # rel="alternate" link, or strict Atom parsers reject the entry.
+        _sub(entry, "link", rel="alternate", href=row["epub_url"], type=EPUB_TYPE)
     if row.get("cover_url"):
         cover_type = _image_type(row["cover_url"])
         _sub(
