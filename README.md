@@ -8,8 +8,7 @@ Generates a static [OPDS](https://en.wikipedia.org/wiki/Open_Publication_Distrib
 catalog for jw.org's EPUB publications (Bible, books, brochures, Watchtower,
 Awake!, meeting workbook, daily text), so you can browse and download them
 straight from an e-reader that supports OPDS (KOReader, PocketBook, Moon+
-Reader, [CrossPoint Reader](https://crosspointreader.com) — open-source
-firmware for ESP32 e-ink devices like Xteink/M5Paper/LilyGo T5 — etc.).
+Reader, CrossPoint Reader etc.).
 
 **Live catalog (this repo's own deployment):**
 `https://ca-za.github.io/jwOPDS/index.xml` — add this URL as an OPDS catalog
@@ -18,7 +17,7 @@ in your e-reader.
 ## Disclaimer
 
 **This project was not created by, and is not affiliated with, endorsed by,
-or connected in any way to jw.org, Jehovah's Witnesses, or the Watch Tower
+or connected in any way to jw.org or the Watch Tower
 Bible and Tract Society.** It is an independent, unofficial tool built by a
 third party.
 
