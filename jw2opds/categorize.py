@@ -94,6 +94,11 @@ _ARCHIVE_LABELS = {
     "nl": "Oudere nummers",
 }
 
+_NEW_LABELS = {
+    "en": "New", "de": "Neu", "fr": "Nouveautés", "es": "Novedades",
+    "it": "Novità", "pt": "Novidades", "nl": "Nieuw",
+}
+
 
 def categorize(pub_key: str, is_periodical: bool, attribute_tags: frozenset = frozenset()) -> str:
     if pub_key == "nwt" or pub_key.startswith("nwt"):
@@ -154,3 +159,7 @@ def display_title(category: str, locale: str, rows: list[dict]) -> str:
 
 def archive_label(locale: str) -> str:
     return _ARCHIVE_LABELS.get(locale.lower(), _ARCHIVE_LABELS["en"])
+
+
+def new_label(locale: str) -> str:
+    return _NEW_LABELS.get(locale.lower(), _NEW_LABELS["en"])

@@ -20,7 +20,7 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from .categorize import CATEGORY_ORDER, PERIODICAL_CATEGORIES, archive_label, display_title
+from .categorize import CATEGORY_ORDER, PERIODICAL_CATEGORIES, archive_label, display_title, new_label
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
 NAV_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation"
@@ -128,6 +128,22 @@ def write_language_feed(output_dir: Path, base_url: str, lang, by_category: dict
         href=_href(base_url, f"{locale}/new.xml"),
         type=ACQ_TYPE,
     )
+
+    # Also a plain browsable entry, first in the list -- clients that don't
+    # recognize the rel="sort/new" link above (most minimal/embedded OPDS
+    # readers) would otherwise never surface this feed at all.
+    new_entry = _sub(feed, "entry")
+    _sub(new_entry, "title", new_label(locale))
+    _sub(new_entry, "id", f"urn:jw2opds:new:{locale}")
+    _sub(new_entry, "updated", _now_iso())
+    _sub(
+        new_entry,
+        "link",
+        rel="subsection",
+        href=_href(base_url, f"{locale}/new.xml"),
+        type=ACQ_TYPE,
+    )
+
     for category in CATEGORY_ORDER:
         if category not in by_category:
             continue
