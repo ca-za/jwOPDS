@@ -1,7 +1,29 @@
 # See config.example.yaml for a fully commented reference.
 
+# Top 20 languages by total speakers worldwide (jw.org locale codes;
+# Mandarin uses jw.org's "cmn_hans" locale since plain "zh" isn't one of
+# jw.org's own locale identifiers).
 languages:
+  - en
+  - cmn_hans
+  - hi
+  - es
+  - fr
+  - ar
+  - bn
+  - pt
+  - ru
+  - ur
+  - id
   - de
+  - ja
+  - sw
+  - mr
+  - te
+  - tr
+  - ta
+  - vi
+  - ko
 
 output_dir: output
 cache_dir: cache
@@ -16,7 +38,7 @@ periodical_keys:
 
 periodical_lookback_months: 0
 recheck_days: 30
-concurrency: 8
+concurrency: 16
 request_timeout: 15
 base_url: "https://ca-za.github.io/jwOPDS"
 user_agent: "jw2opds/1.0 (+personal OPDS catalog generator; https://www.jw.org publications)"
