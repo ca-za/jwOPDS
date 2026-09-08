@@ -1,7 +1,7 @@
 # jw2opds
 
 > **Unofficial, third-party project.** Not created by, affiliated with,
-> endorsed by, or connected in any way to jw.org, Jehovah's Witnesses, or the
+> endorsed by, or connected in any way to jw.org or the
 > Watch Tower Bible and Tract Society. See [Disclaimer](#disclaimer) below.
 
 Generates a static [OPDS](https://en.wikipedia.org/wiki/Open_Publication_Distribution_System)
