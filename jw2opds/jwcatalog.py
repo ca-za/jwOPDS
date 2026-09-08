@@ -116,6 +116,30 @@ def list_periodical_issues(
     return issues
 
 
+def load_attribute_tags(db_path: Path) -> dict[str, frozenset]:
+    """Map each non-periodical KeySymbol to the set of PublicationAttribute
+    names attached to it in jw.org's own catalog (e.g. "Convention", "Circuit
+    Assembly", "Yearbook"). These are content-type tags on the underlying
+    publication, the same regardless of translation, so there's no need to
+    resolve a language first -- attributes from any language edition apply."""
+    con = sqlite3.connect(str(db_path))
+    try:
+        rows = con.execute(
+            "SELECT DISTINCT p.KeySymbol, pa.Name "
+            "FROM Publication p "
+            "JOIN PublicationAttributeMap pam ON pam.PublicationId = p.Id "
+            "JOIN PublicationAttribute pa ON pa.Id = pam.PublicationAttributeId "
+            "WHERE p.IssueTagNumber = 0 AND p.Reserved = 0"
+        ).fetchall()
+    finally:
+        con.close()
+
+    tags: dict[str, set] = {}
+    for key, name in rows:
+        tags.setdefault(key, set()).add(name)
+    return {key: frozenset(names) for key, names in tags.items()}
+
+
 def _months_ago_tag(months: int) -> str:
     today = datetime.date.today()
     year = today.year

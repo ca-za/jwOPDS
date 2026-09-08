@@ -116,7 +116,8 @@ output/
   <locale>/index.xml                per-language navigation feed (one entry per category)
   <locale>/new.xml                  recently updated publications, any category
   <locale>/bible.xml                flat acquisition feed
-  <locale>/books.xml                flat acquisition feed (books & brochures)
+  <locale>/books.xml                flat acquisition feed (everything not otherwise categorized)
+  <locale>/tracts.xml               flat acquisition feed
   <locale>/watchtower.xml           latest year's issues + link into the archive
   <locale>/watchtower/index.xml     archive: one entry per year
   <locale>/watchtower/<year>.xml    all issues from that year
@@ -126,15 +127,37 @@ output/
   <locale>/meeting-workbook/...
   <locale>/daily-text.xml           (same per-year archive pattern)
   <locale>/daily-text/...
+  <locale>/yearbook.xml             (same per-year archive pattern)
+  <locale>/yearbook/...
+  <locale>/assembly-programs.xml    (same per-year archive pattern; convention +
+  <locale>/assembly-programs/...     circuit assembly programs)
 ```
 
-Bible and Books & Brochures are flat lists. Watchtower, Awake!, the meeting
-workbook, and the daily text accumulate dated issues/editions over time, so
-each gets its own front page (latest year only) plus a year-by-year archive,
-rather than one ever-growing feed.
+Categories: Bible, Watchtower, Awake!, Meeting Workbook, Daily Text,
+Yearbooks, and Convention & Assembly Programs are split off automatically
+(the latter two via jw.org's own `PublicationAttribute` tags -- "Yearbook",
+"Convention", "Circuit Assembly" -- rather than guessing from publication
+codes). Tracts and everything else land in Books & Brochures.
 
-Every `<entry>` acquisition link (`rel="http://opds-spec.org/acquisition"`)
-points directly at the EPUB file on `jw-cdn.org`; cover/thumbnail links
+Bible, Books & Brochures, and Tracts are flat lists. The rest accumulate
+dated issues/editions over time, so each gets its own front page (latest
+year only) plus a year-by-year archive, rather than one ever-growing feed.
+Any acquisition feed that still grows past 50 entries (the flat ones, or a
+single year with unusually many editions) is automatically split into
+`-2.xml`, `-3.xml`, ... pages linked with `rel="next"`/`"previous"`, so no
+single feed file risks exceeding a constrained OPDS client's entry limit.
+
+Category *labels* are derived straight from jw.org's own localized
+publication titles wherever one exists to derive them from (e.g. stripping
+the year off "Kongressprogramm 2019" gives "Kongressprogramm", regardless of
+where in the title jw.org's own translators placed the year) -- so they're
+correct in any language jw.org supports, not just the handful of languages
+this project could itself translate "Books & Brochures"/"Tracts" into
+(falls back to English there).
+
+Every `<entry>` acquisition link (`rel="http://opds-spec.org/acquisition"`,
+plus a matching `rel="alternate"` per RFC 4287 4.1.2) points directly at the
+EPUB file on `jw-cdn.org`; cover/thumbnail links
 (`rel="http://opds-spec.org/image"` / `.../image/thumbnail`) do the same for
 jw.org's image CDN, when cover art was found for that publication.
 

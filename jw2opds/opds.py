@@ -20,7 +20,7 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from .categorize import CATEGORY_ORDER, PERIODICAL_CATEGORIES, archive_label, category_title
+from .categorize import CATEGORY_ORDER, PERIODICAL_CATEGORIES, archive_label, display_title
 
 ATOM_NS = "http://www.w3.org/2005/Atom"
 NAV_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation"
@@ -110,7 +110,7 @@ def write_root_feed(output_dir: Path, base_url: str, languages) -> None:
     _write(feed, output_dir / "index.xml")
 
 
-def write_language_feed(output_dir: Path, base_url: str, lang, categories_present) -> None:
+def write_language_feed(output_dir: Path, base_url: str, lang, by_category: dict) -> None:
     locale = lang.locale or lang.code
     feed = _base_feed(
         lang.vernacular or lang.name,
@@ -128,10 +128,10 @@ def write_language_feed(output_dir: Path, base_url: str, lang, categories_presen
         type=ACQ_TYPE,
     )
     for category in CATEGORY_ORDER:
-        if category not in categories_present:
+        if category not in by_category:
             continue
         entry = _sub(feed, "entry")
-        title = category_title(category, locale)
+        title = display_title(category, locale, by_category[category])
         _sub(entry, "title", title)
         _sub(entry, "id", f"urn:jw2opds:cat:{locale}:{category}")
         _sub(entry, "updated", _now_iso())
@@ -237,7 +237,7 @@ def _write_paginated_acquisition(
 
 def _write_flat_category_feed(output_dir: Path, base_url: str, lang, category: str, rows: list[dict]) -> None:
     locale = lang.locale or lang.code
-    title = category_title(category, locale)
+    title = display_title(category, locale, rows)
     _write_paginated_acquisition(
         output_dir, base_url, locale,
         feed_id_base=f"urn:jw2opds:cat:{locale}:{category}",
@@ -271,7 +271,7 @@ def _write_periodical_category_feed(
     (<locale>/<category>.xml) shows only the latest year's issues directly,
     plus a link into the archive for everything older."""
     locale = lang.locale or lang.code
-    title = category_title(category, locale)
+    title = display_title(category, locale, rows)
 
     by_year: dict[str, list[dict]] = {}
     for row in rows:
@@ -281,10 +281,10 @@ def _write_periodical_category_feed(
     years = sorted(by_year.keys(), reverse=True)
 
     for year in years:
-        _write_periodical_year_feed(output_dir, base_url, lang, category, year, by_year[year])
+        _write_periodical_year_feed(output_dir, base_url, lang, category, title, year, by_year[year])
 
     if years:
-        _write_periodical_archive_index(output_dir, base_url, lang, category, years)
+        _write_periodical_archive_index(output_dir, base_url, lang, category, title, years)
 
     # Front page: latest year's issues directly, archive link if there's more.
     feed = _base_feed(
@@ -317,10 +317,10 @@ def _write_periodical_category_feed(
 
 
 def _write_periodical_archive_index(
-    output_dir: Path, base_url: str, lang, category: str, years: list[str]
+    output_dir: Path, base_url: str, lang, category: str, base_title: str, years: list[str]
 ) -> None:
     locale = lang.locale or lang.code
-    title = f"{category_title(category, locale)} — {archive_label(locale)}"
+    title = f"{base_title} — {archive_label(locale)}"
     feed = _base_feed(
         title,
         f"urn:jw2opds:archive:{locale}:{category}",
@@ -346,10 +346,10 @@ def _write_periodical_archive_index(
 
 
 def _write_periodical_year_feed(
-    output_dir: Path, base_url: str, lang, category: str, year: str, rows: list[dict]
+    output_dir: Path, base_url: str, lang, category: str, base_title: str, year: str, rows: list[dict]
 ) -> None:
     locale = lang.locale or lang.code
-    title = f"{category_title(category, locale)} {year}"
+    title = f"{base_title} {year}"
     _write_paginated_acquisition(
         output_dir, base_url, locale,
         feed_id_base=f"urn:jw2opds:cat:{locale}:{category}:{year}",
