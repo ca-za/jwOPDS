@@ -21,10 +21,22 @@ CREATE TABLE IF NOT EXISTS entries (
     modified_datetime TEXT,
     cover_url TEXT,
     thumbnail_url TEXT,
+    pdf_url TEXT,
+    pdf_checksum TEXT,
+    pdf_filesize INTEGER,
     last_checked REAL NOT NULL,
     PRIMARY KEY (lang_code, pub_key, issue)
 );
 """
+
+# Columns added after the initial release; migrated in on open so existing
+# state.sqlite3 files (e.g. committed to the repo) don't need to be reset.
+_MIGRATED_COLUMNS = {
+    "thumbnail_url": "TEXT",
+    "pdf_url": "TEXT",
+    "pdf_checksum": "TEXT",
+    "pdf_filesize": "INTEGER",
+}
 
 
 class StateDB:
@@ -33,8 +45,9 @@ class StateDB:
         self.con = sqlite3.connect(str(path))
         self.con.execute(SCHEMA)
         existing = {row[1] for row in self.con.execute("PRAGMA table_info(entries)")}
-        if "thumbnail_url" not in existing:
-            self.con.execute("ALTER TABLE entries ADD COLUMN thumbnail_url TEXT")
+        for column, sqltype in _MIGRATED_COLUMNS.items():
+            if column not in existing:
+                self.con.execute(f"ALTER TABLE entries ADD COLUMN {column} {sqltype}")
         self.con.commit()
 
     def close(self):
@@ -74,24 +87,29 @@ class StateDB:
         modified_datetime: str,
         cover_url: str,
         thumbnail_url: str,
+        pdf_url: str = "",
+        pdf_checksum: str = "",
+        pdf_filesize: int = 0,
     ):
         self.con.execute(
             """
             INSERT INTO entries (
                 lang_code, pub_key, issue, available, category, title, epub_url,
                 checksum, filesize, modified_datetime, cover_url, thumbnail_url,
-                last_checked
-            ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                pdf_url, pdf_checksum, pdf_filesize, last_checked
+            ) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(lang_code, pub_key, issue) DO UPDATE SET
                 available=1, category=excluded.category, title=excluded.title,
                 epub_url=excluded.epub_url, checksum=excluded.checksum,
                 filesize=excluded.filesize, modified_datetime=excluded.modified_datetime,
                 cover_url=excluded.cover_url, thumbnail_url=excluded.thumbnail_url,
-                last_checked=excluded.last_checked
+                pdf_url=excluded.pdf_url, pdf_checksum=excluded.pdf_checksum,
+                pdf_filesize=excluded.pdf_filesize, last_checked=excluded.last_checked
             """,
             (
                 lang_code, pub_key, issue, category, title, epub_url, checksum,
                 filesize, modified_datetime, cover_url, thumbnail_url,
+                pdf_url, pdf_checksum, pdf_filesize,
                 time.time(),
             ),
         )

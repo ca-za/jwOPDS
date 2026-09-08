@@ -26,6 +26,7 @@ ATOM_NS = "http://www.w3.org/2005/Atom"
 NAV_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation"
 ACQ_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisition"
 EPUB_TYPE = "application/epub+zip"
+PDF_TYPE = "application/pdf"
 
 # Some OPDS clients (e.g. CrossPoint Reader's fixed-size entry buffer) cap
 # how many <entry> elements they'll parse from a single feed. Keep every
@@ -164,6 +165,15 @@ def _entry_element(feed: ET.Element, locale: str, base_url: str, row: dict) -> N
         # RFC 4287 4.1.2: an entry with no atom:content MUST have a
         # rel="alternate" link, or strict Atom parsers reject the entry.
         _sub(entry, "link", rel="alternate", href=row["epub_url"], type=EPUB_TYPE)
+    if row.get("pdf_url"):
+        _sub(
+            entry,
+            "link",
+            rel="http://opds-spec.org/acquisition",
+            href=row["pdf_url"],
+            type=PDF_TYPE,
+            length=str(row.get("pdf_filesize") or 0),
+        )
     if row.get("cover_url"):
         cover_type = _image_type(row["cover_url"])
         _sub(

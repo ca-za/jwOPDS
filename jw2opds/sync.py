@@ -104,4 +104,7 @@ def _sync_language(cfg, session, state: StateDB, lang, candidates, force: bool, 
                 modified_datetime=media.modified_datetime,
                 cover_url=cover_url or "",
                 thumbnail_url=thumbnail_url or "",
+                pdf_url=media.pdf_url,
+                pdf_checksum=media.pdf_checksum,
+                pdf_filesize=media.pdf_filesize,
             )
