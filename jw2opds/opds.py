@@ -27,6 +27,12 @@ NAV_TYPE = "application/atom+xml;profile=opds-catalog;kind=navigation"
 ACQ_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisition"
 EPUB_TYPE = "application/epub+zip"
 
+# Some OPDS clients (e.g. CrossPoint Reader's fixed-size entry buffer) cap
+# how many <entry> elements they'll parse from a single feed. Keep every
+# acquisition feed comfortably under such limits by paginating with
+# rel="next"/"previous" (RFC 5005) instead of growing one file forever.
+PAGE_SIZE = 50
+
 ET.register_namespace("", ATOM_NS)
 
 
@@ -188,27 +194,58 @@ def write_category_feed(output_dir: Path, base_url: str, lang, category: str, ro
         _write_flat_category_feed(output_dir, base_url, lang, category, rows)
 
 
+def _page_path(path_stem: str, page_index: int) -> str:
+    return f"{path_stem}.xml" if page_index == 0 else f"{path_stem}-{page_index + 1}.xml"
+
+
+def _write_paginated_acquisition(
+    output_dir: Path,
+    base_url: str,
+    locale: str,
+    feed_id_base: str,
+    title: str,
+    path_stem: str,
+    up_href: str,
+    rows: list[dict],
+) -> None:
+    """Write `rows` as one or more acquisition feed pages of at most
+    PAGE_SIZE entries each, chained with rel="next"/"previous". Page 1 keeps
+    the original, stable filename (path_stem + ".xml") so existing links
+    into it never break as a category grows past one page."""
+    pages = [rows[i:i + PAGE_SIZE] for i in range(0, len(rows), PAGE_SIZE)] or [[]]
+    total = len(pages)
+    for index, page_rows in enumerate(pages):
+        self_path = _page_path(path_stem, index)
+        feed_id = feed_id_base if total == 1 else f"{feed_id_base}:page{index + 1}"
+        feed = _base_feed(title, feed_id, self_path, ACQ_TYPE, base_url)
+        _sub(feed, "link", rel="start", href=_href(base_url, "index.xml"), type=NAV_TYPE)
+        _sub(feed, "link", rel="up", href=_href(base_url, up_href), type=NAV_TYPE)
+        if index > 0:
+            _sub(
+                feed, "link", rel="previous",
+                href=_href(base_url, _page_path(path_stem, index - 1)), type=ACQ_TYPE,
+            )
+        if index < total - 1:
+            _sub(
+                feed, "link", rel="next",
+                href=_href(base_url, _page_path(path_stem, index + 1)), type=ACQ_TYPE,
+            )
+        for row in page_rows:
+            _entry_element(feed, locale, base_url, row)
+        _write(feed, output_dir / self_path)
+
+
 def _write_flat_category_feed(output_dir: Path, base_url: str, lang, category: str, rows: list[dict]) -> None:
     locale = lang.locale or lang.code
     title = category_title(category, locale)
-    feed = _base_feed(
-        title,
-        f"urn:jw2opds:cat:{locale}:{category}",
-        f"{locale}/{category}.xml",
-        ACQ_TYPE,
-        base_url,
+    _write_paginated_acquisition(
+        output_dir, base_url, locale,
+        feed_id_base=f"urn:jw2opds:cat:{locale}:{category}",
+        title=title,
+        path_stem=f"{locale}/{category}",
+        up_href=f"{locale}/index.xml",
+        rows=rows,
     )
-    _sub(feed, "link", rel="start", href=_href(base_url, "index.xml"), type=NAV_TYPE)
-    _sub(
-        feed,
-        "link",
-        rel="up",
-        href=_href(base_url, f"{locale}/index.xml"),
-        type=NAV_TYPE,
-    )
-    for row in rows:
-        _entry_element(feed, locale, base_url, row)
-    _write(feed, output_dir / locale / f"{category}.xml")
 
 
 _TRAILING_YEAR_RE = re.compile(r"(\d{2})$")
@@ -260,7 +297,9 @@ def _write_periodical_category_feed(
     _sub(feed, "link", rel="start", href=_href(base_url, "index.xml"), type=NAV_TYPE)
     _sub(feed, "link", rel="up", href=_href(base_url, f"{locale}/index.xml"), type=NAV_TYPE)
     if years:
-        for row in by_year[years[0]]:
+        # Leave room for the archive-link entry below; the full year is
+        # always available via <category>/<year>.xml regardless.
+        for row in by_year[years[0]][:PAGE_SIZE - 1]:
             _entry_element(feed, locale, base_url, row)
         if len(years) > 1:
             entry = _sub(feed, "entry")
@@ -311,24 +350,14 @@ def _write_periodical_year_feed(
 ) -> None:
     locale = lang.locale or lang.code
     title = f"{category_title(category, locale)} {year}"
-    feed = _base_feed(
-        title,
-        f"urn:jw2opds:cat:{locale}:{category}:{year}",
-        f"{locale}/{category}/{year}.xml",
-        ACQ_TYPE,
-        base_url,
+    _write_paginated_acquisition(
+        output_dir, base_url, locale,
+        feed_id_base=f"urn:jw2opds:cat:{locale}:{category}:{year}",
+        title=title,
+        path_stem=f"{locale}/{category}/{year}",
+        up_href=f"{locale}/{category}/index.xml",
+        rows=rows,
     )
-    _sub(feed, "link", rel="start", href=_href(base_url, "index.xml"), type=NAV_TYPE)
-    _sub(
-        feed,
-        "link",
-        rel="up",
-        href=_href(base_url, f"{locale}/{category}/index.xml"),
-        type=NAV_TYPE,
-    )
-    for row in rows:
-        _entry_element(feed, locale, base_url, row)
-    _write(feed, output_dir / locale / category / f"{year}.xml")
 
 
 def write_new_feed(output_dir: Path, base_url: str, lang, rows: list[dict], limit: int = 50) -> None:
