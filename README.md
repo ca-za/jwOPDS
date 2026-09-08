@@ -155,10 +155,13 @@ correct in any language jw.org supports, not just the handful of languages
 this project could itself translate "Books & Brochures"/"Tracts" into
 (falls back to English there).
 
-Every `<entry>` acquisition link (`rel="http://opds-spec.org/acquisition"`,
-plus a matching `rel="alternate"` per RFC 4287 4.1.2) points directly at the
-EPUB file on `jw-cdn.org`; cover/thumbnail links
-(`rel="http://opds-spec.org/image"` / `.../image/thumbnail`) do the same for
+Every `<entry>` has an EPUB acquisition link (`rel="http://opds-spec.org/acquisition"`,
+plus a matching `rel="alternate"` per RFC 4287 4.1.2) pointing directly at
+the file on `jw-cdn.org`, and a second acquisition link with
+`type="application/pdf"` whenever jw.org also offers a PDF rendition (EPUB
+is what determines whether a publication counts as available at all; PDF is
+purely additive). Cover/thumbnail links
+(`rel="http://opds-spec.org/image"` / `.../image/thumbnail`) point at
 jw.org's image CDN, when cover art was found for that publication.
 
 ## CLI
