@@ -1,0 +1,62 @@
+name: Sync catalog and deploy to GitHub Pages
+
+on:
+  schedule:
+    # Daily at 06:00 UTC. GitHub may delay this during high load; that's fine
+    # for a personal catalog. Scheduled workflows on public repos are
+    # auto-disabled after 60 days with no repository activity, but this
+    # workflow's own commit (step below) counts as activity, so it stays
+    # alive as long as it keeps running.
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run sync
+        run: python -m jw2opds --config config.yaml -v
+
+      - name: Commit updated publication index
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add cache/state.sqlite3
+          git diff --cached --quiet || git commit -m "Update publication index"
+          git push
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: output
+
+  deploy:
+    needs: sync
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

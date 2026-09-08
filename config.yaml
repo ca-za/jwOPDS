@@ -1,0 +1,22 @@
+# See config.example.yaml for a fully commented reference.
+
+languages:
+  - de
+
+output_dir: output
+cache_dir: cache
+
+periodical_keys:
+  - w
+  - wp
+  - wqu
+  - g
+  - mwb
+  - ws
+
+periodical_lookback_months: 0
+recheck_days: 30
+concurrency: 8
+request_timeout: 15
+base_url: ""
+user_agent: "jw2opds/1.0 (+personal OPDS catalog generator; https://www.jw.org publications)"

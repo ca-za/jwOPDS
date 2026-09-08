@@ -1,0 +1,56 @@
+# jw2opds configuration
+# Copy to config.yaml and adjust, then run: python -m jw2opds --config config.yaml
+
+# ISO locale codes (e.g. "de", "en", "fr") or native JW language codes (e.g. "X", "E").
+# Resolved against https://b.jw-cdn.org/apis/mediator/v1/languages/E/all
+languages:
+  - de
+
+# Where the generated OPDS feeds + downloaded epub files are written.
+# Point your web server (nginx, caddy, python -m http.server, ...) at this directory.
+output_dir: output
+
+# Where the jw.org publication catalog and our own local index database are cached.
+cache_dir: cache
+
+# KeySymbols of recurring periodicals to check for EPUB issues.
+#   w    = The Watchtower (study edition)
+#   wp   = The Watchtower (public edition)
+#   wqu  = The Watchtower (simplified)
+#   g    = Awake!
+#   mwb  = Our Christian Life and Ministry / meeting workbook
+#   ws   = additional Watchtower-family key seen in some languages
+periodical_keys:
+  - w
+  - wp
+  - wqu
+  - g
+  - mwb
+  - ws
+
+# How many months of periodical issues (back from the newest known issue) to
+# check. 0 = check jw.org's entire known history for each periodical (the
+# jw.org catalog goes back decades, but EPUB only exists for recent years, so
+# older issues just get a quick "not available" and are cached as such - this
+# is a one-time cost, not repeated on every run). Set a positive number here
+# only if you want to deliberately limit how far back your catalog goes.
+periodical_lookback_months: 0
+
+# Previously confirmed non-periodical publications (books, brochures, Bible
+# translations) are not re-checked on every run. This sets the minimum number
+# of days between re-checks of the same publication.
+recheck_days: 30
+
+# Parallel requests to jw.org APIs.
+concurrency: 6
+
+# HTTP request timeout in seconds.
+request_timeout: 15
+
+# If your OPDS output will be served under a fixed public URL, set it here to
+# emit absolute links (e.g. "https://opds.example.com/"). Leave empty to emit
+# relative links, which work with any e-reader that resolves them against the
+# feed URL it fetched (the normal case).
+base_url: ""
+
+user_agent: "jw2opds/1.0 (+personal OPDS catalog generator; https://www.jw.org publications)"

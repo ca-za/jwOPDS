@@ -1,0 +1,8 @@
+/output/
+/cache/jw_catalog.db
+/cache/jw_catalog.db.gz
+/cache/jw_catalog_manifest.json
+__pycache__/
+*.pyc
+.DS_Store
+sync.log
