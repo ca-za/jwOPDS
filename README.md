@@ -11,8 +11,8 @@ straight from an e-reader that supports OPDS (KOReader, PocketBook, Moon+
 Reader, CrossPoint Reader etc.).
 
 **Live catalog (this repo's own deployment):**
-`https://ca-za.github.io/jwOPDS/index.xml` — add this URL as an OPDS catalog
-in your e-reader.
+`https://ca-za.github.io/jwOPDS/` — add this URL as an OPDS catalog
+in your e-reader without user credentials
 
 ## Disclaimer
 
