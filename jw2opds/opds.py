@@ -16,6 +16,7 @@ downloaded or re-hosted.
 from __future__ import annotations
 
 import datetime
+import posixpath
 import re
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -67,10 +68,15 @@ def _to_iso(modified_datetime: str) -> str:
         return _now_iso()
 
 
-def _href(base_url: str, relative: str) -> str:
-    if not base_url:
-        return relative
-    return base_url.rstrip("/") + "/" + relative.lstrip("/")
+def _href(base_url: str, self_dir: str, target: str) -> str:
+    """Build the href for a link inside a document that itself lives at
+    `self_dir` (its path relative to output_dir, "" for the root). With no
+    base_url, hrefs must be relative to the *referencing* document's own
+    directory, not to output_dir's root -- otherwise every link inside a
+    subfolder (<locale>/..., <locale>/<category>/...) resolves wrong."""
+    if base_url:
+        return base_url.rstrip("/") + "/" + target.lstrip("/")
+    return posixpath.relpath(target, start=self_dir or ".")
 
 
 def _write(feed: ET.Element, dest: Path):
@@ -80,22 +86,23 @@ def _write(feed: ET.Element, dest: Path):
     tree.write(dest, encoding="utf-8", xml_declaration=True)
 
 
-def _base_feed(title: str, feed_id: str, self_href: str, self_type: str, base_url: str) -> ET.Element:
+def _base_feed(title: str, feed_id: str, self_path: str, self_type: str, base_url: str) -> ET.Element:
+    self_dir = posixpath.dirname(self_path)
     feed = _el("feed")
     _sub(feed, "id", feed_id)
     _sub(feed, "title", title)
     _sub(feed, "updated", _now_iso())
     _sub(_sub(feed, "author"), "name", "jw2opds")
-    # link rel=self
-    _sub(feed, "link", rel="self", href=_href(base_url, self_href), type=self_type)
+    _sub(feed, "link", rel="self", href=_href(base_url, self_dir, self_path), type=self_type)
     return feed
 
 
 def write_root_feed(output_dir: Path, base_url: str, languages) -> None:
+    self_dir = ""
     feed = _base_feed(
         "JW.ORG Library", "urn:jw2opds:root", "index.xml", NAV_TYPE, base_url
     )
-    _sub(feed, "link", rel="start", href=_href(base_url, "index.xml"), type=NAV_TYPE)
+    _sub(feed, "link", rel="start", href=_href(base_url, self_dir, "index.xml"), type=NAV_TYPE)
     for lang in languages:
         entry = _sub(feed, "entry")
         _sub(entry, "title", lang.vernacular or lang.name)
@@ -105,7 +112,7 @@ def write_root_feed(output_dir: Path, base_url: str, languages) -> None:
             entry,
             "link",
             rel="subsection",
-            href=_href(base_url, f"{lang.locale or lang.code}/index.xml"),
+            href=_href(base_url, self_dir, f"{lang.locale or lang.code}/index.xml"),
             type=NAV_TYPE,
         )
     _write(feed, output_dir / "index.xml")
@@ -113,6 +120,7 @@ def write_root_feed(output_dir: Path, base_url: str, languages) -> None:
 
 def write_language_feed(output_dir: Path, base_url: str, lang, by_category: dict) -> None:
     locale = lang.locale or lang.code
+    self_dir = locale
     feed = _base_feed(
         lang.vernacular or lang.name,
         f"urn:jw2opds:lang:{locale}",
@@ -120,12 +128,12 @@ def write_language_feed(output_dir: Path, base_url: str, lang, by_category: dict
         NAV_TYPE,
         base_url,
     )
-    _sub(feed, "link", rel="start", href=_href(base_url, "index.xml"), type=NAV_TYPE)
+    _sub(feed, "link", rel="start", href=_href(base_url, self_dir, "index.xml"), type=NAV_TYPE)
     _sub(
         feed,
         "link",
         rel="http://opds-spec.org/sort/new",
-        href=_href(base_url, f"{locale}/new.xml"),
+        href=_href(base_url, self_dir, f"{locale}/new.xml"),
         type=ACQ_TYPE,
     )
 
@@ -140,7 +148,7 @@ def write_language_feed(output_dir: Path, base_url: str, lang, by_category: dict
         new_entry,
         "link",
         rel="subsection",
-        href=_href(base_url, f"{locale}/new.xml"),
+        href=_href(base_url, self_dir, f"{locale}/new.xml"),
         type=ACQ_TYPE,
     )
 
@@ -156,7 +164,7 @@ def write_language_feed(output_dir: Path, base_url: str, lang, by_category: dict
             entry,
             "link",
             rel="subsection",
-            href=_href(base_url, f"{locale}/{category}.xml"),
+            href=_href(base_url, self_dir, f"{locale}/{category}.xml"),
             type=ACQ_TYPE,
         )
     _write(feed, output_dir / locale / "index.xml")
@@ -240,21 +248,22 @@ def _write_paginated_acquisition(
     into it never break as a category grows past one page."""
     pages = [rows[i:i + PAGE_SIZE] for i in range(0, len(rows), PAGE_SIZE)] or [[]]
     total = len(pages)
+    self_dir = posixpath.dirname(path_stem)
     for index, page_rows in enumerate(pages):
         self_path = _page_path(path_stem, index)
         feed_id = feed_id_base if total == 1 else f"{feed_id_base}:page{index + 1}"
         feed = _base_feed(title, feed_id, self_path, ACQ_TYPE, base_url)
-        _sub(feed, "link", rel="start", href=_href(base_url, "index.xml"), type=NAV_TYPE)
-        _sub(feed, "link", rel="up", href=_href(base_url, up_href), type=NAV_TYPE)
+        _sub(feed, "link", rel="start", href=_href(base_url, self_dir, "index.xml"), type=NAV_TYPE)
+        _sub(feed, "link", rel="up", href=_href(base_url, self_dir, up_href), type=NAV_TYPE)
         if index > 0:
             _sub(
                 feed, "link", rel="previous",
-                href=_href(base_url, _page_path(path_stem, index - 1)), type=ACQ_TYPE,
+                href=_href(base_url, self_dir, _page_path(path_stem, index - 1)), type=ACQ_TYPE,
             )
         if index < total - 1:
             _sub(
                 feed, "link", rel="next",
-                href=_href(base_url, _page_path(path_stem, index + 1)), type=ACQ_TYPE,
+                href=_href(base_url, self_dir, _page_path(path_stem, index + 1)), type=ACQ_TYPE,
             )
         for row in page_rows:
             _entry_element(feed, locale, base_url, row)
@@ -313,6 +322,7 @@ def _write_periodical_category_feed(
         _write_periodical_archive_index(output_dir, base_url, lang, category, title, years)
 
     # Front page: latest year's issues directly, archive link if there's more.
+    self_dir = locale
     feed = _base_feed(
         title,
         f"urn:jw2opds:cat:{locale}:{category}",
@@ -320,8 +330,8 @@ def _write_periodical_category_feed(
         ACQ_TYPE,
         base_url,
     )
-    _sub(feed, "link", rel="start", href=_href(base_url, "index.xml"), type=NAV_TYPE)
-    _sub(feed, "link", rel="up", href=_href(base_url, f"{locale}/index.xml"), type=NAV_TYPE)
+    _sub(feed, "link", rel="start", href=_href(base_url, self_dir, "index.xml"), type=NAV_TYPE)
+    _sub(feed, "link", rel="up", href=_href(base_url, self_dir, f"{locale}/index.xml"), type=NAV_TYPE)
     if years:
         # Leave room for the archive-link entry below; the full year is
         # always available via <category>/<year>.xml regardless.
@@ -336,7 +346,7 @@ def _write_periodical_category_feed(
                 entry,
                 "link",
                 rel="subsection",
-                href=_href(base_url, f"{locale}/{category}/index.xml"),
+                href=_href(base_url, self_dir, f"{locale}/{category}/index.xml"),
                 type=NAV_TYPE,
             )
     _write(feed, output_dir / locale / f"{category}.xml")
@@ -347,6 +357,7 @@ def _write_periodical_archive_index(
 ) -> None:
     locale = lang.locale or lang.code
     title = f"{base_title} — {archive_label(locale)}"
+    self_dir = f"{locale}/{category}"
     feed = _base_feed(
         title,
         f"urn:jw2opds:archive:{locale}:{category}",
@@ -354,8 +365,8 @@ def _write_periodical_archive_index(
         NAV_TYPE,
         base_url,
     )
-    _sub(feed, "link", rel="start", href=_href(base_url, "index.xml"), type=NAV_TYPE)
-    _sub(feed, "link", rel="up", href=_href(base_url, f"{locale}/{category}.xml"), type=ACQ_TYPE)
+    _sub(feed, "link", rel="start", href=_href(base_url, self_dir, "index.xml"), type=NAV_TYPE)
+    _sub(feed, "link", rel="up", href=_href(base_url, self_dir, f"{locale}/{category}.xml"), type=ACQ_TYPE)
     for year in years:
         entry = _sub(feed, "entry")
         _sub(entry, "title", year)
@@ -365,7 +376,7 @@ def _write_periodical_archive_index(
             entry,
             "link",
             rel="subsection",
-            href=_href(base_url, f"{locale}/{category}/{year}.xml"),
+            href=_href(base_url, self_dir, f"{locale}/{category}/{year}.xml"),
             type=ACQ_TYPE,
         )
     _write(feed, output_dir / locale / category / "index.xml")
@@ -388,6 +399,7 @@ def _write_periodical_year_feed(
 
 def write_new_feed(output_dir: Path, base_url: str, lang, rows: list[dict], limit: int = 50) -> None:
     locale = lang.locale or lang.code
+    self_dir = locale
     feed = _base_feed(
         f"New — {lang.vernacular or lang.name}",
         f"urn:jw2opds:new:{locale}",
@@ -395,8 +407,8 @@ def write_new_feed(output_dir: Path, base_url: str, lang, rows: list[dict], limi
         ACQ_TYPE,
         base_url,
     )
-    _sub(feed, "link", rel="start", href=_href(base_url, "index.xml"), type=NAV_TYPE)
-    _sub(feed, "link", rel="up", href=_href(base_url, f"{locale}/index.xml"), type=NAV_TYPE)
+    _sub(feed, "link", rel="start", href=_href(base_url, self_dir, "index.xml"), type=NAV_TYPE)
+    _sub(feed, "link", rel="up", href=_href(base_url, self_dir, f"{locale}/index.xml"), type=NAV_TYPE)
     sorted_rows = sorted(rows, key=lambda r: r["modified_datetime"] or "", reverse=True)
     for row in sorted_rows[:limit]:
         _entry_element(feed, locale, base_url, row)
