@@ -138,6 +138,16 @@ on every run) — unlike `catalog.db`, which never is.
 - **GitHub Pages always serves `.xml` as generic `application/xml`**,
   ignoring whatever `type=` we declare inside the feed (no custom-header
   support on Pages). Don't assume the declared type reaches the client.
+- **`config.yaml`'s `base_url` must stay set (absolute links), not empty.**
+  CrossPoint Reader's `UrlUtils::buildUrl()` never strips the trailing
+  filename off its current URL before appending a relative reference, so
+  every navigation hop beyond the first accumulates a bogus path segment
+  (`.../de/index.xml/bible.xml` instead of `.../de/bible.xml`) and the
+  device reports "Failed to fetch feed". This was confirmed by reading
+  CrossPoint's actual source, not guessed. Relative links are perfectly
+  valid per RFC 3986 and were tried first (see git history) specifically
+  for local-testing convenience -- don't revert to them without fixing this
+  client-side bug upstream first, or you'll reintroduce this breakage.
 - **This repo has its own git identity** (`git config user.name/email`,
   repo-local, not global) — `ca-za <carlo.speranza@gmail.com>` — set
   deliberately after an earlier mistake where commits picked up the

@@ -49,8 +49,13 @@ request_timeout: 15
 
 # If your OPDS output will be served under a fixed public URL, set it here to
 # emit absolute links (e.g. "https://opds.example.com/"). Leave empty to emit
-# relative links, which work with any e-reader that resolves them against the
-# feed URL it fetched (the normal case).
+# relative links, which work with any e-reader that correctly resolves them
+# against the feed URL it fetched. In practice, set this: at least one real
+# client (CrossPoint Reader) has a bug in its relative-URL resolution that
+# breaks navigation more than one folder deep unless every link is absolute
+# (see CLAUDE.md's "Hard-won lessons" for details) -- absolute links avoid
+# that broken code path entirely, at the cost of local test output always
+# pointing back at this URL instead of e.g. localhost.
 base_url: ""
 
 user_agent: "jw2opds/1.0 (+personal OPDS catalog generator; https://www.jw.org publications)"
