@@ -30,6 +30,15 @@ ACQ_TYPE = "application/atom+xml;profile=opds-catalog;kind=acquisition"
 EPUB_TYPE = "application/epub+zip"
 PDF_TYPE = "application/pdf"
 
+# KOReader's own OPDS browser (opds.koplugin) shows every acquisition link
+# as a separate download button in document order, with no dedup or
+# type-based preference -- it can't auto-pick between the original and a
+# proxy-optimized rendition of the same book. It does read each link's
+# atom:link@title attribute as the button label (falling back to the
+# uppercased file extension otherwise), so labeling is the only lever we
+# have to make that unavoidable manual choice legible.
+DEVICE_LABELS = {"X4": "X4-optimized", "X3": "X3-optimized", "KOREADER": "KOReader-optimized"}
+
 # Some OPDS clients (e.g. CrossPoint Reader's fixed-size entry buffer) cap
 # how many <entry> elements they'll parse from a single feed. Keep every
 # acquisition feed comfortably under such limits by paginating with
@@ -186,6 +195,7 @@ def _entry_element(
     author = _sub(entry, "author")
     _sub(author, "name", "Watch Tower Bible and Tract Society")
     if row.get("epub_url"):
+        proxy_devices = epub_proxy_devices if epub_proxy_base_url else []
         _sub(
             entry,
             "link",
@@ -193,6 +203,10 @@ def _entry_element(
             href=row["epub_url"],
             type=EPUB_TYPE,
             length=str(row.get("filesize") or 0),
+            # Only set once there's a second EPUB link to disambiguate from --
+            # an unnecessary "Original" label on the sole acquisition option
+            # would just be noise for clients that show titles unconditionally.
+            **({"title": "Original"} if proxy_devices else {}),
         )
         # RFC 4287 4.1.2: an entry with no atom:content MUST have a
         # rel="alternate" link, or strict Atom parsers reject the entry.
@@ -200,7 +214,7 @@ def _entry_element(
         # Additional device-optimized rendition(s) from a self-hosted proxy
         # (see epub-proxy/), alongside the original -- readers that don't
         # need it just ignore the extra link.
-        for device in (epub_proxy_devices if epub_proxy_base_url else []):
+        for device in proxy_devices:
             proxy_href = (
                 f"{epub_proxy_base_url.rstrip('/')}/optimize/{device.lower()}.epub"
                 f"?src={quote(row['epub_url'], safe='')}"
@@ -218,6 +232,7 @@ def _entry_element(
                 rel="http://opds-spec.org/acquisition",
                 href=proxy_href,
                 type=EPUB_TYPE,
+                title=DEVICE_LABELS.get(device.upper(), device),
             )
     if row.get("pdf_url"):
         _sub(

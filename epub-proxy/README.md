@@ -115,3 +115,12 @@ When set, every generated OPDS entry gets an *additional*
 the existing direct-from-jw.org link -- so unaffected readers still get the
 original file, while CrossPoint (or anything else that benefits from the
 optimized version) has one available too.
+
+OPDS has no mechanism for a client to auto-prefer one acquisition link over
+another of the same type, and confirmed via KOReader's own `opds.koplugin`
+source, it doesn't do this either -- it just shows one download button per
+acquisition link, in document order. Each link's `title` attribute is used
+as that button's label, so jw2opds sets `title="Original"` on the direct
+jw.org link and e.g. `title="KOReader-optimized"` on the proxy link, purely
+to make that manual choice legible rather than showing two generic ".EPUB"
+buttons.

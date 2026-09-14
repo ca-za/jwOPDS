@@ -163,7 +163,16 @@ of serving a stale copy forever -- caching on `(src, device)` alone would
 never notice jw.org updating a file in place at the same URL. `jw2opds`'s
 own `opds.py` links to it (an *additional* acquisition link per entry,
 alongside the original) only when `config.yaml`'s `epub_proxy.base_url` is
-set; empty (the default) means no proxy links are generated at all.
+set; empty (the default) means no proxy links are generated at all. OPDS has
+no standard way to mark one acquisition link "preferred" over another of the
+same type, and KOReader's own OPDS browser (`opds.koplugin`) confirms it
+doesn't try: it collects every `rel="acquisition"` link on an entry
+unfiltered and shows one download button per link, in document order, using
+each link's `title` attribute as the button label. So `_entry_element` sets
+`title="Original"` / `DEVICE_LABELS[device]` (e.g. "KOReader-optimized") on
+these links purely so that unavoidable manual choice is legible instead of
+presenting the user with two generic ".EPUB" buttons -- it does not, and
+cannot, make any reader auto-select the optimized one.
 
 Cache eviction (`MAX_CACHE_BYTES`/`MAX_CACHE_FILES`, both unset = unlimited)
 prunes least-recently-*served* entries first -- `_touch()` refreshes an
