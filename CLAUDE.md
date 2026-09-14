@@ -142,6 +142,21 @@ unmodified from `crosspoint-reader/calibre-plugins` (MIT, see
 when `config.yaml`'s `epub_proxy.base_url` is set; empty (the default)
 means no proxy links are generated at all.
 
+`app.py` treats the fetched source as untrusted input (it's fetched from
+jw.org's own CDN, but the endpoint itself is public and unauthenticated, so
+harden at the boundary anyway): re-validates the allowlist against the
+*final* URL after redirects (not just the requested one -- `requests`
+follows redirects by default without re-checking), rejects sources over
+`MAX_DOWNLOAD_BYTES`/`MAX_UNCOMPRESSED_BYTES` before ever handing them to
+the optimizer (zip-bomb protection), and maps failures to proper 4xx/502
+instead of leaking a generic 500. Rate limiting is deliberately NOT in the
+app (see `nginx.conf.example`) -- an in-process limiter's state doesn't
+carry across gunicorn's multiple worker processes (confirmed by testing:
+35 rapid requests split across 2 workers, each individually under a
+30/minute cap, produced zero 429s), so it silently under-enforces exactly
+when it matters. Don't re-add an in-app limiter without a shared backing
+store (Redis, etc.) that's actually synchronized across workers.
+
 ## Hard-won lessons (don't rediscover these)
 
 - **CrossPoint Reader (and likely other minimal/embedded OPDS clients) caps

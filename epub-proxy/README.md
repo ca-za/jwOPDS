@@ -10,7 +10,16 @@ from their [calibre-plugins](https://github.com/crosspoint-reader/calibre-plugin
 repo -- see `THIRD_PARTY_LICENSES.md`), caches the result, and serves it.
 
 It is a narrow transformer, not a general-purpose proxy: it only fetches
-from hosts on `ALLOWED_SOURCE_HOSTS` (default: `jw-cdn.org`).
+from hosts on `ALLOWED_SOURCE_HOSTS` (default: `jw-cdn.org`), re-checks that
+allowlist against the *final* URL after redirects (not just the requested
+one), and rejects sources over `MAX_DOWNLOAD_BYTES`/`MAX_UNCOMPRESSED_BYTES`
+(zip-bomb protection) before handing them to the optimizer.
+
+This is a public, unauthenticated endpoint that does real work (network
+fetch + image/XML processing) per request, so **rate limiting is expected
+to happen in front of it** -- see `nginx.conf.example` -- not in the app
+itself (an in-process limiter's state doesn't carry across gunicorn's
+multiple worker processes, so it under-enforces exactly when it matters).
 
 ## Endpoint
 
@@ -36,11 +45,14 @@ docker compose up -d
 Cache persists in the `epub-cache` Docker volume. Config via environment
 variables (see `docker-compose.yml`): `ALLOWED_SOURCE_HOSTS` (comma-separated
 host suffixes), `JPEG_QUALITY` (default 85), `SOURCE_FETCH_TIMEOUT` (seconds,
-default 60).
+default 60), `MAX_DOWNLOAD_BYTES` (default 150 MB), `MAX_UNCOMPRESSED_BYTES`
+(default 500 MB).
 
-Put this behind your own reverse proxy / TLS termination (Caddy, nginx,
-Traefik, a Cloudflare Tunnel, whatever you already use) to get it a public
-HTTPS URL -- this container itself only speaks plain HTTP on :8080.
+Put this behind your own reverse proxy / TLS termination -- `nginx.conf.example`
+is a ready-to-adapt starting point (TLS termination, rate limiting via
+`limit_req_zone`, sane timeouts for the slow first-fetch-and-transform path).
+This container itself only speaks plain HTTP on :8080 and has no rate
+limiting of its own; don't expose :8080 directly to the internet.
 
 ## Wiring it into jw2opds
 
