@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import re
 import tempfile
 import zipfile
 from pathlib import Path
@@ -68,6 +69,34 @@ def _host_allowed(host: str) -> bool:
 
 def _cache_key(src: str, device: str) -> str:
     return hashlib.sha256(f"{device}|{src}".encode("utf-8")).hexdigest()
+
+
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _safe_log_value(value: str) -> str:
+    """`src` is attacker-controlled (a GET parameter); Werkzeug happily
+    URL-decodes embedded control characters into it. Strip them before
+    logging so a crafted request can't forge fake-looking extra log lines
+    (CWE-117) -- this is about keeping logs trustworthy, not about the
+    request handling itself, which never uses the raw value unsanitized."""
+    return _CONTROL_CHARS_RE.sub("", value)
+
+
+_UNSAFE_FILENAME_RE = re.compile(r'[^A-Za-z0-9._-]')
+
+
+def _safe_download_name(name: str, fallback: str = "book") -> str:
+    """Restrict a filename derived from attacker-controlled input (the `src`
+    URL's path) to a safe, boring charset before it reaches a Content-
+    Disposition header. Werkzeug's send_file already rejects raw control
+    characters in download_name outright (raises ValueError) and correctly
+    escapes quotes rather than allowing them to break out of the header's
+    filename="..." parameter -- confirmed by testing -- so this isn't
+    closing a real hole, just making the failure mode "sanitized name"
+    instead of "500 from an uncaught ValueError" for unusual input."""
+    cleaned = _UNSAFE_FILENAME_RE.sub("_", name).strip("._")
+    return cleaned or fallback
 
 
 def _download(url: str, dest: Path) -> None:
@@ -125,9 +154,10 @@ def optimize(device: str):
     if parsed.scheme not in ("http", "https") or not _host_allowed(parsed.hostname):
         abort(403, "source host not allowed")
 
+    safe_src = _safe_log_value(src)
     cache_path = CACHE_DIR / f"{_cache_key(src, device)}.epub"
     if not cache_path.is_file():
-        log.info("Cache miss for %s (%s), fetching + optimizing", src, device)
+        log.info("Cache miss for %s (%s), fetching + optimizing", safe_src, device)
         # Must be on the same filesystem as CACHE_DIR (typically a separate
         # mounted volume) so the final os.replace() below is an atomic
         # same-device rename, not a cross-device move (which os.replace
@@ -144,24 +174,30 @@ def optimize(device: str):
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(out_path, cache_path)
         except SourceError as e:
-            log.warning("Rejected source %s (%s): %s", src, device, e)
+            log.warning("Rejected source %s (%s): %s", safe_src, device, e)
             abort(400, str(e))
         except requests.RequestException as e:
-            log.warning("Fetch failed for %s: %s", src, e)
+            log.warning("Fetch failed for %s: %s", safe_src, e)
             abort(502, f"failed to fetch source: {e}")
         except Exception:
-            log.exception("Optimization failed for %s (%s)", src, device)
+            log.exception("Optimization failed for %s (%s)", safe_src, device)
             abort(500, "optimization failed")
     else:
-        log.info("Cache hit for %s (%s)", src, device)
+        log.info("Cache hit for %s (%s)", safe_src, device)
 
-    download_name = Path(parsed.path).stem + f".{device.lower()}.epub"
-    return send_file(
-        cache_path,
-        mimetype="application/epub+zip",
-        as_attachment=True,
-        download_name=download_name,
-    )
+    download_name = _safe_download_name(Path(parsed.path).stem) + f".{device.lower()}.epub"
+    try:
+        return send_file(
+            cache_path,
+            mimetype="application/epub+zip",
+            as_attachment=True,
+            download_name=download_name,
+        )
+    except ValueError:
+        # Should be unreachable now that download_name is sanitized, but
+        # fail cleanly rather than as an uncaught 500 if it ever isn't.
+        log.exception("send_file rejected download_name %r", download_name)
+        abort(500, "failed to serve file")
 
 
 @app.get("/healthz")
