@@ -132,15 +132,20 @@ on every run) — unlike `catalog.db`, which never is.
 
 Not part of the main `jw2opds` Python package or its GitHub Actions
 workflow -- a standalone Flask service (own `Dockerfile`/`requirements.txt`)
-you self-host if you want it. `GET /optimize/<device>.epub?src=<url>` fetches
-`src` (must be on `ALLOWED_SOURCE_HOSTS`, default `jw-cdn.org`, so it can't be
-used as a general open proxy), runs it through `optimizer/` -- vendored
-unmodified from `crosspoint-reader/calibre-plugins` (MIT, see
+you self-host if you want it. `GET /optimize/<device>.epub?src=<url>&checksum=<md5>`
+fetches `src` (must be on `ALLOWED_SOURCE_HOSTS`, default `jw-cdn.org`, so it
+can't be used as a general open proxy), runs it through `optimizer/` --
+vendored unmodified from `crosspoint-reader/calibre-plugins` (MIT, see
 `THIRD_PARTY_LICENSES.md`) -- caches the result keyed by
-`sha256(device|src)`, and serves it. `jw2opds`'s own `opds.py` links to it
-(an *additional* acquisition link per entry, alongside the original) only
-when `config.yaml`'s `epub_proxy.base_url` is set; empty (the default)
-means no proxy links are generated at all.
+`sha256(device|checksum|src)`, and serves it. `checksum` is jw.org's own
+reported MD5 (jw2opds already tracks it in `state.sqlite3` from
+GETPUBMEDIALINKS); folding it into the cache key means a content change at
+jw.org invalidates the cached transformation on jw2opds's next sync instead
+of serving a stale copy forever -- caching on `(src, device)` alone would
+never notice jw.org updating a file in place at the same URL. `jw2opds`'s
+own `opds.py` links to it (an *additional* acquisition link per entry,
+alongside the original) only when `config.yaml`'s `epub_proxy.base_url` is
+set; empty (the default) means no proxy links are generated at all.
 
 `app.py` treats the fetched source as untrusted input (it's fetched from
 jw.org's own CDN, but the endpoint itself is public and unauthenticated, so

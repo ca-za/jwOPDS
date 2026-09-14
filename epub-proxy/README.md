@@ -24,16 +24,23 @@ multiple worker processes, so it under-enforces exactly when it matters).
 ## Endpoint
 
 ```
-GET /optimize/<device>.epub?src=<url-encoded source EPUB URL>
+GET /optimize/<device>.epub?src=<url-encoded source EPUB URL>&checksum=<md5, optional>
 ```
 
 - `<device>`: `x4` (480x800) or `x3` (528x792) -- CrossPoint's own device
   profiles.
 - `src`: the original EPUB URL. Must be on an allowlisted host or the
   request is rejected with 403.
+- `checksum`: jw.org's own reported MD5 for the file (jw2opds already has
+  this from GETPUBMEDIALINKS and includes it automatically). Verified
+  against the downloaded bytes (400 on mismatch) and folded into the cache
+  key, so a content change at jw.org -- a new checksum on jw2opds's next
+  sync -- invalidates the cached optimized copy instead of serving a stale
+  one forever. Optional only for manually-constructed URLs; omitting it
+  falls back to caching on `(src, device)` alone.
 
-First request for a given `(src, device)` pair fetches + transforms +
-caches (may take a few seconds depending on the book's size/image count);
+First request for a given `(src, device, checksum)` triple fetches +
+transforms + caches (may take a few seconds depending on the book's size/image count);
 every subsequent request for the same pair is served straight from cache.
 
 ## Running it
