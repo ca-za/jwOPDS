@@ -55,6 +55,20 @@ host suffixes), `JPEG_QUALITY` (default 85), `SOURCE_FETCH_TIMEOUT` (seconds,
 default 60), `MAX_DOWNLOAD_BYTES` (default 150 MB), `MAX_UNCOMPRESSED_BYTES`
 (default 500 MB).
 
+### Cache size limits
+
+`MAX_CACHE_BYTES` and `MAX_CACHE_FILES` (both unset/`0` = unlimited, the
+default) bound the cache. Once either is exceeded, the least-recently-*served*
+entries are deleted first -- a cache hit refreshes an entry's "last served"
+time just as much as creating it does, so an old-but-still-frequently-read
+book won't get evicted just because something else was cached more recently.
+Pruning runs after every newly-cached file, is safe across gunicorn's
+multiple worker processes (a plain flock -- if a worker is already pruning,
+others skip that round rather than double up), and never deletes the file
+the current request is about to serve, even if a misconfigured limit is
+smaller than that one file (the budget is left slightly exceeded in that
+case rather than corrupting the in-flight response).
+
 Put this behind your own reverse proxy / TLS termination -- `nginx.conf.example`
 is a ready-to-adapt starting point (TLS termination, rate limiting via
 `limit_req_zone`, sane timeouts for the slow first-fetch-and-transform path).

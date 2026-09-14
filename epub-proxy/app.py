@@ -20,6 +20,7 @@ being keyed on (src, device) alone.
 """
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import logging
 import os
@@ -64,6 +65,13 @@ JPEG_QUALITY = int(os.environ.get("JPEG_QUALITY", "85"))
 # legitimate edge case.
 MAX_DOWNLOAD_BYTES = int(os.environ.get("MAX_DOWNLOAD_BYTES", str(150 * 1024 * 1024)))
 MAX_UNCOMPRESSED_BYTES = int(os.environ.get("MAX_UNCOMPRESSED_BYTES", str(500 * 1024 * 1024)))
+
+# Cache eviction: 0 = unlimited (the default -- opt in explicitly). Whichever
+# limit is set, the least-recently-*served* entries (not least-recently-
+# created -- a cache hit counts as "used" too) are pruned first.
+MAX_CACHE_BYTES = int(os.environ.get("MAX_CACHE_BYTES", "0"))
+MAX_CACHE_FILES = int(os.environ.get("MAX_CACHE_FILES", "0"))
+_PRUNE_LOCK_PATH = CACHE_DIR / ".prune.lock"
 
 
 class SourceError(Exception):
@@ -153,6 +161,82 @@ def _download(url: str, dest: Path, expected_checksum: str = "") -> None:
         )
 
 
+def _touch(path: Path) -> None:
+    """Mark a cache entry as just-used. mtime, not atime: many setups mount
+    volumes noatime (or just don't reliably update it on every read), so we
+    can't trust the filesystem to track "last served" for us -- we update it
+    explicitly on every hit, and it's already "now" on creation."""
+    try:
+        os.utime(path, None)
+    except FileNotFoundError:
+        pass
+
+
+def _prune_cache(exclude: Path | None = None) -> None:
+    """Evict least-recently-served cache entries until both MAX_CACHE_BYTES
+    and MAX_CACHE_FILES (whichever are non-zero) are satisfied. `exclude`
+    (the entry this request is about to serve) is never deleted -- with a
+    misconfigured limit smaller than a single file, pruning should leave the
+    budget slightly exceeded rather than delete the file out from under the
+    response that's about to serve it. It still counts toward the total,
+    though: excluding it there too would under-count and let the *other*
+    files sit one-over-limit forever without ever triggering a prune."""
+    if not MAX_CACHE_BYTES and not MAX_CACHE_FILES:
+        return
+
+    prunable = []
+    total_size = 0
+    count = 0
+    for entry in CACHE_DIR.iterdir():
+        if not entry.name.endswith(".epub") or not entry.is_file():
+            continue
+        try:
+            st = entry.stat()
+        except FileNotFoundError:
+            continue
+        total_size += st.st_size
+        count += 1
+        if entry != exclude:
+            prunable.append((st.st_mtime, st.st_size, entry))
+
+    prunable.sort(key=lambda e: e[0])  # oldest last-served first
+
+    i = 0
+    while i < len(prunable) and (
+        (MAX_CACHE_BYTES and total_size > MAX_CACHE_BYTES)
+        or (MAX_CACHE_FILES and count > MAX_CACHE_FILES)
+    ):
+        _, size, path = prunable[i]
+        i += 1
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            continue
+        total_size -= size
+        count -= 1
+        log.info(
+            "Pruned cache entry %s (%.1f KB, least recently served) -- now %d files, %.1f MB",
+            path.name, size / 1024, count, total_size / (1024 * 1024),
+        )
+
+
+def _prune_cache_locked(exclude: Path | None = None) -> None:
+    """Serialize pruning across gunicorn's worker processes with a plain
+    flock -- if another worker is already pruning, skip this round rather
+    than block or double up; the next cache-writing request tries again."""
+    if not MAX_CACHE_BYTES and not MAX_CACHE_FILES:
+        return
+    with open(_PRUNE_LOCK_PATH, "w") as lock_file:
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        try:
+            _prune_cache(exclude=exclude)
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
 def _check_zip_safety(path: Path) -> None:
     """Reject zip bombs -- a small download that would decompress to an
     enormous amount of data -- before handing the file to the optimizer."""
@@ -211,8 +295,16 @@ def optimize(device: str):
         except Exception:
             log.exception("Optimization failed for %s (%s)", safe_src, device)
             abort(500, "optimization failed")
+
+        # Best-effort maintenance: never let a pruning problem fail an
+        # otherwise-successful request -- the file is already cached fine.
+        try:
+            _prune_cache_locked(exclude=cache_path)
+        except Exception:
+            log.exception("Cache pruning failed (non-fatal)")
     else:
         log.info("Cache hit for %s (%s)", safe_src, device)
+        _touch(cache_path)
 
     download_name = _safe_download_name(Path(parsed.path).stem) + f".{device.lower()}.epub"
     try:

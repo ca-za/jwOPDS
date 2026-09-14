@@ -147,6 +147,19 @@ own `opds.py` links to it (an *additional* acquisition link per entry,
 alongside the original) only when `config.yaml`'s `epub_proxy.base_url` is
 set; empty (the default) means no proxy links are generated at all.
 
+Cache eviction (`MAX_CACHE_BYTES`/`MAX_CACHE_FILES`, both unset = unlimited)
+prunes least-recently-*served* entries first -- `_touch()` refreshes an
+entry's mtime on a cache hit, not just on creation, since mtime (not atime)
+is what's used to track "last served" (volumes are often mounted noatime,
+so atime can't be trusted). Two bugs found and fixed by actually testing
+this against a real 3-file/2-slot cache rather than just reading the code:
+(1) the file this request is about to serve must be excluded from the
+*eviction candidates* but still counted in the *total* used for the
+limit check -- excluding it from both under-counted the total and silently
+let the cache sit one-over-limit forever; (2) pruning is wrapped in its own
+try/except separate from the main request handling, since a pruning failure
+must never turn an otherwise-successful cache write into a 500.
+
 `app.py` treats the fetched source as untrusted input (it's fetched from
 jw.org's own CDN, but the endpoint itself is public and unauthenticated, so
 harden at the boundary anyway): re-validates the allowlist against the

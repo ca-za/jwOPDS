@@ -9,6 +9,10 @@ services:
       - ALLOWED_SOURCE_HOSTS=jw-cdn.org
       - JPEG_QUALITY=85
       - SOURCE_FETCH_TIMEOUT=60
+      # Cache eviction, both optional (0/unset = unlimited). Least-recently-
+      # served entries are pruned first once either limit is exceeded.
+      # - MAX_CACHE_BYTES=5368709120   # e.g. 5 GiB
+      # - MAX_CACHE_FILES=500
     restart: unless-stopped
 
 volumes:
