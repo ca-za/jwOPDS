@@ -205,6 +205,13 @@ def _entry_element(
                 f"{epub_proxy_base_url.rstrip('/')}/optimize/{device.lower()}.epub"
                 f"?src={quote(row['epub_url'], safe='')}"
             )
+            if row.get("checksum"):
+                # jw.org's own reported MD5 for this exact file revision.
+                # Folded into the proxy's cache key so a content change (new
+                # checksum picked up on our next sync) invalidates the cached
+                # optimized copy instead of it going stale forever, and lets
+                # the proxy verify the download matches what jw.org reported.
+                proxy_href += f"&checksum={quote(row['checksum'], safe='')}"
             _sub(
                 entry,
                 "link",

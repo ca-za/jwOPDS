@@ -1,13 +1,22 @@
 """On-demand EPUB optimizer proxy.
 
-GET /optimize/<device>.epub?src=<url>
+GET /optimize/<device>.epub?src=<url>&checksum=<md5, optional>
 
 Fetches the EPUB at `src` (must be on an allowlisted host), runs it through
 CrossPoint Reader's own optimizer (see optimizer/, vendored from
 crosspoint-reader/calibre-plugins), caches the result on disk keyed by
-(src, device), and serves it. Never stores or serves anything from a host
-not on ALLOWED_SOURCE_HOSTS -- this is a transformer for a specific known
-source, not a general-purpose open proxy.
+(src, device, checksum), and serves it. Never stores or serves anything
+from a host not on ALLOWED_SOURCE_HOSTS -- this is a transformer for a
+specific known source, not a general-purpose open proxy.
+
+`checksum` is jw.org's own reported MD5 for the file (jw2opds already has
+it from GETPUBMEDIALINKS and passes it along when it links here). Folding
+it into the cache key means a content change at jw.org -- picked up as a
+new checksum on jw2opds's next sync -- naturally invalidates the cached
+optimized copy instead of it going stale forever; it's also verified
+against the actual downloaded bytes before processing, as an integrity
+check. Without it (a manually-constructed URL, say), caching falls back to
+being keyed on (src, device) alone.
 """
 from __future__ import annotations
 
@@ -67,8 +76,13 @@ def _host_allowed(host: str) -> bool:
     return any(host == h or host.endswith("." + h) for h in ALLOWED_SOURCE_HOSTS)
 
 
-def _cache_key(src: str, device: str) -> str:
-    return hashlib.sha256(f"{device}|{src}".encode("utf-8")).hexdigest()
+def _cache_key(src: str, device: str, checksum: str = "") -> str:
+    # Folding jw.org's own reported checksum in means a content change (a
+    # new checksum picked up on jw2opds's next sync) invalidates the cached
+    # optimized copy automatically -- without it, the cache is keyed purely
+    # on the URL and would serve a stale transformation forever if jw.org
+    # ever updated a file's content in place at the same URL.
+    return hashlib.sha256(f"{device}|{checksum}|{src}".encode("utf-8")).hexdigest()
 
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -99,7 +113,13 @@ def _safe_download_name(name: str, fallback: str = "book") -> str:
     return cleaned or fallback
 
 
-def _download(url: str, dest: Path) -> None:
+def _download(url: str, dest: Path, expected_checksum: str = "") -> None:
+    """Fetch `url` to `dest`. If `expected_checksum` (an MD5 hex digest, as
+    reported by jw.org's own GETPUBMEDIALINKS) is given, verify the
+    downloaded bytes match it -- a defense-in-depth integrity check, since
+    this proxy processes and re-serves the content rather than passing it
+    through untouched."""
+    md5 = hashlib.md5() if expected_checksum else None
     with requests.get(url, stream=True, timeout=FETCH_TIMEOUT) as resp:
         # Re-validate the *final* host after redirects: the initial `src`
         # passing the allowlist doesn't mean a 3xx hop couldn't land
@@ -123,6 +143,14 @@ def _download(url: str, dest: Path) -> None:
                 if total > MAX_DOWNLOAD_BYTES:
                     raise SourceError(f"source exceeded the {MAX_DOWNLOAD_BYTES}-byte download limit")
                 f.write(chunk)
+                if md5 is not None:
+                    md5.update(chunk)
+
+    if md5 is not None and md5.hexdigest().lower() != expected_checksum.lower():
+        raise SourceError(
+            f"downloaded content checksum {md5.hexdigest()} does not match "
+            f"expected {expected_checksum} -- source may have changed or been tampered with"
+        )
 
 
 def _check_zip_safety(path: Path) -> None:
@@ -149,13 +177,14 @@ def optimize(device: str):
     src = request.args.get("src")
     if not src:
         abort(400, "missing 'src' query parameter")
+    checksum = request.args.get("checksum", "")
 
     parsed = urlparse(src)
     if parsed.scheme not in ("http", "https") or not _host_allowed(parsed.hostname):
         abort(403, "source host not allowed")
 
     safe_src = _safe_log_value(src)
-    cache_path = CACHE_DIR / f"{_cache_key(src, device)}.epub"
+    cache_path = CACHE_DIR / f"{_cache_key(src, device, checksum)}.epub"
     if not cache_path.is_file():
         log.info("Cache miss for %s (%s), fetching + optimizing", safe_src, device)
         # Must be on the same filesystem as CACHE_DIR (typically a separate
@@ -166,7 +195,7 @@ def optimize(device: str):
             with tempfile.TemporaryDirectory(dir=CACHE_DIR) as tmp:
                 in_path = Path(tmp) / "in.epub"
                 out_path = Path(tmp) / "out.epub"
-                _download(src, in_path)
+                _download(src, in_path, checksum)
                 _check_zip_safety(in_path)
                 profile = DEVICE_PROFILES[device]
                 opts = Options(quality=JPEG_QUALITY)
