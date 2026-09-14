@@ -42,3 +42,7 @@ concurrency: 16
 request_timeout: 15
 base_url: "https://ca-za.github.io/jwOPDS"
 user_agent: "jw2opds/1.0 (+personal OPDS catalog generator; https://www.jw.org publications)"
+
+epub_proxy:
+  base_url: "https://epub-proxy.tail664f78.ts.net"
+  devices: ["X4", "X3", "KOREADER"]
