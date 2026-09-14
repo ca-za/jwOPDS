@@ -19,6 +19,7 @@ import datetime
 import posixpath
 import re
 from pathlib import Path
+from urllib.parse import quote
 from xml.etree import ElementTree as ET
 
 from .categorize import CATEGORY_ORDER, PERIODICAL_CATEGORIES, archive_label, display_title, new_label
@@ -170,7 +171,14 @@ def write_language_feed(output_dir: Path, base_url: str, lang, by_category: dict
     _write(feed, output_dir / locale / "index.xml")
 
 
-def _entry_element(feed: ET.Element, locale: str, base_url: str, row: dict) -> None:
+def _entry_element(
+    feed: ET.Element,
+    locale: str,
+    base_url: str,
+    row: dict,
+    epub_proxy_base_url: str = "",
+    epub_proxy_devices: list | None = None,
+) -> None:
     entry = _sub(feed, "entry")
     _sub(entry, "title", row["title"] or row["pub_key"])
     _sub(entry, "id", f"urn:jw2opds:{locale}:{row['pub_key']}:{row['issue']}")
@@ -189,6 +197,21 @@ def _entry_element(feed: ET.Element, locale: str, base_url: str, row: dict) -> N
         # RFC 4287 4.1.2: an entry with no atom:content MUST have a
         # rel="alternate" link, or strict Atom parsers reject the entry.
         _sub(entry, "link", rel="alternate", href=row["epub_url"], type=EPUB_TYPE)
+        # Additional device-optimized rendition(s) from a self-hosted proxy
+        # (see epub-proxy/), alongside the original -- readers that don't
+        # need it just ignore the extra link.
+        for device in (epub_proxy_devices if epub_proxy_base_url else []):
+            proxy_href = (
+                f"{epub_proxy_base_url.rstrip('/')}/optimize/{device.lower()}.epub"
+                f"?src={quote(row['epub_url'], safe='')}"
+            )
+            _sub(
+                entry,
+                "link",
+                rel="http://opds-spec.org/acquisition",
+                href=proxy_href,
+                type=EPUB_TYPE,
+            )
     if row.get("pdf_url"):
         _sub(
             entry,
@@ -221,11 +244,18 @@ def _image_type(url: str) -> str:
     return "image/png" if Path(url).suffix.lower() == ".png" else "image/jpeg"
 
 
-def write_category_feed(output_dir: Path, base_url: str, lang, category: str, rows: list[dict]) -> None:
+def write_category_feed(
+    output_dir: Path, base_url: str, lang, category: str, rows: list[dict],
+    epub_proxy_base_url: str = "", epub_proxy_devices: list | None = None,
+) -> None:
     if category in PERIODICAL_CATEGORIES:
-        _write_periodical_category_feed(output_dir, base_url, lang, category, rows)
+        _write_periodical_category_feed(
+            output_dir, base_url, lang, category, rows, epub_proxy_base_url, epub_proxy_devices,
+        )
     else:
-        _write_flat_category_feed(output_dir, base_url, lang, category, rows)
+        _write_flat_category_feed(
+            output_dir, base_url, lang, category, rows, epub_proxy_base_url, epub_proxy_devices,
+        )
 
 
 def _page_path(path_stem: str, page_index: int) -> str:
@@ -241,6 +271,8 @@ def _write_paginated_acquisition(
     path_stem: str,
     up_href: str,
     rows: list[dict],
+    epub_proxy_base_url: str = "",
+    epub_proxy_devices: list | None = None,
 ) -> None:
     """Write `rows` as one or more acquisition feed pages of at most
     PAGE_SIZE entries each, chained with rel="next"/"previous". Page 1 keeps
@@ -266,11 +298,14 @@ def _write_paginated_acquisition(
                 href=_href(base_url, self_dir, _page_path(path_stem, index + 1)), type=ACQ_TYPE,
             )
         for row in page_rows:
-            _entry_element(feed, locale, base_url, row)
+            _entry_element(feed, locale, base_url, row, epub_proxy_base_url, epub_proxy_devices)
         _write(feed, output_dir / self_path)
 
 
-def _write_flat_category_feed(output_dir: Path, base_url: str, lang, category: str, rows: list[dict]) -> None:
+def _write_flat_category_feed(
+    output_dir: Path, base_url: str, lang, category: str, rows: list[dict],
+    epub_proxy_base_url: str = "", epub_proxy_devices: list | None = None,
+) -> None:
     locale = lang.locale or lang.code
     title = display_title(category, locale, rows)
     _write_paginated_acquisition(
@@ -280,6 +315,8 @@ def _write_flat_category_feed(output_dir: Path, base_url: str, lang, category: s
         path_stem=f"{locale}/{category}",
         up_href=f"{locale}/index.xml",
         rows=rows,
+        epub_proxy_base_url=epub_proxy_base_url,
+        epub_proxy_devices=epub_proxy_devices,
     )
 
 
@@ -298,7 +335,8 @@ def _year_of(row: dict) -> str:
 
 
 def _write_periodical_category_feed(
-    output_dir: Path, base_url: str, lang, category: str, rows: list[dict]
+    output_dir: Path, base_url: str, lang, category: str, rows: list[dict],
+    epub_proxy_base_url: str = "", epub_proxy_devices: list | None = None,
 ) -> None:
     """Recurring publications (Watchtower, Awake!, meeting workbook) get one
     acquisition feed per year under <locale>/<category>/<year>.xml, reachable
@@ -316,7 +354,10 @@ def _write_periodical_category_feed(
     years = sorted(by_year.keys(), reverse=True)
 
     for year in years:
-        _write_periodical_year_feed(output_dir, base_url, lang, category, title, year, by_year[year])
+        _write_periodical_year_feed(
+            output_dir, base_url, lang, category, title, year, by_year[year],
+            epub_proxy_base_url, epub_proxy_devices,
+        )
 
     if years:
         _write_periodical_archive_index(output_dir, base_url, lang, category, title, years)
@@ -336,7 +377,7 @@ def _write_periodical_category_feed(
         # Leave room for the archive-link entry below; the full year is
         # always available via <category>/<year>.xml regardless.
         for row in by_year[years[0]][:PAGE_SIZE - 1]:
-            _entry_element(feed, locale, base_url, row)
+            _entry_element(feed, locale, base_url, row, epub_proxy_base_url, epub_proxy_devices)
         if len(years) > 1:
             entry = _sub(feed, "entry")
             _sub(entry, "title", archive_label(locale))
@@ -383,7 +424,8 @@ def _write_periodical_archive_index(
 
 
 def _write_periodical_year_feed(
-    output_dir: Path, base_url: str, lang, category: str, base_title: str, year: str, rows: list[dict]
+    output_dir: Path, base_url: str, lang, category: str, base_title: str, year: str, rows: list[dict],
+    epub_proxy_base_url: str = "", epub_proxy_devices: list | None = None,
 ) -> None:
     locale = lang.locale or lang.code
     title = f"{base_title} {year}"
@@ -394,10 +436,15 @@ def _write_periodical_year_feed(
         path_stem=f"{locale}/{category}/{year}",
         up_href=f"{locale}/{category}/index.xml",
         rows=rows,
+        epub_proxy_base_url=epub_proxy_base_url,
+        epub_proxy_devices=epub_proxy_devices,
     )
 
 
-def write_new_feed(output_dir: Path, base_url: str, lang, rows: list[dict], limit: int = 50) -> None:
+def write_new_feed(
+    output_dir: Path, base_url: str, lang, rows: list[dict], limit: int = 50,
+    epub_proxy_base_url: str = "", epub_proxy_devices: list | None = None,
+) -> None:
     locale = lang.locale or lang.code
     self_dir = locale
     feed = _base_feed(
@@ -411,5 +458,5 @@ def write_new_feed(output_dir: Path, base_url: str, lang, rows: list[dict], limi
     _sub(feed, "link", rel="up", href=_href(base_url, self_dir, f"{locale}/index.xml"), type=NAV_TYPE)
     sorted_rows = sorted(rows, key=lambda r: r["modified_datetime"] or "", reverse=True)
     for row in sorted_rows[:limit]:
-        _entry_element(feed, locale, base_url, row)
+        _entry_element(feed, locale, base_url, row, epub_proxy_base_url, epub_proxy_devices)
     _write(feed, output_dir / locale / "new.xml")

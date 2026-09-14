@@ -16,6 +16,7 @@ DEFAULTS = {
     "request_timeout": 15,
     "base_url": "",
     "user_agent": "jw2opds/1.0 (+personal OPDS catalog generator; https://www.jw.org publications)",
+    "epub_proxy": {"base_url": "", "devices": []},
 }
 
 
@@ -31,6 +32,8 @@ class Config:
     request_timeout: int
     base_url: str
     user_agent: str
+    epub_proxy_base_url: str
+    epub_proxy_devices: list
 
     @property
     def state_db_path(self) -> Path:
@@ -60,6 +63,9 @@ def load_config(path: str | Path) -> Config:
     if not data["languages"]:
         raise ValueError("config: 'languages' must contain at least one language code")
 
+    epub_proxy = dict(DEFAULTS["epub_proxy"])
+    epub_proxy.update(data.get("epub_proxy") or {})
+
     return Config(
         languages=list(data["languages"]),
         output_dir=Path(data["output_dir"]),
@@ -71,4 +77,6 @@ def load_config(path: str | Path) -> Config:
         request_timeout=int(data["request_timeout"]),
         base_url=str(data["base_url"] or ""),
         user_agent=str(data["user_agent"]),
+        epub_proxy_base_url=str(epub_proxy["base_url"] or ""),
+        epub_proxy_devices=list(epub_proxy["devices"] or []),
     )

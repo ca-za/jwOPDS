@@ -54,9 +54,15 @@ def run_sync(cfg: Config, only_languages: list[str] | None = None, force: bool =
             by_category.setdefault(row["category"], []).append(row)
 
         for category, cat_rows in by_category.items():
-            opds.write_category_feed(cfg.output_dir, cfg.base_url, lang, category, cat_rows)
+            opds.write_category_feed(
+                cfg.output_dir, cfg.base_url, lang, category, cat_rows,
+                cfg.epub_proxy_base_url, cfg.epub_proxy_devices,
+            )
         opds.write_language_feed(cfg.output_dir, cfg.base_url, lang, by_category)
-        opds.write_new_feed(cfg.output_dir, cfg.base_url, lang, rows)
+        opds.write_new_feed(
+            cfg.output_dir, cfg.base_url, lang, rows,
+            epub_proxy_base_url=cfg.epub_proxy_base_url, epub_proxy_devices=cfg.epub_proxy_devices,
+        )
         log.info("%s: %d publications available", lang.name, len(rows))
 
     opds.write_root_feed(cfg.output_dir, cfg.base_url, resolved)

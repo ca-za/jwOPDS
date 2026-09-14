@@ -59,3 +59,14 @@ request_timeout: 15
 base_url: ""
 
 user_agent: "jw2opds/1.0 (+personal OPDS catalog generator; https://www.jw.org publications)"
+
+# Optional: a self-hosted device-optimized-EPUB proxy (see epub-proxy/).
+# Some e-readers (e.g. CrossPoint Reader) render plain EPUBs poorly --
+# oversized images, unusable embedded fonts, chapters too large for their
+# RAM. When base_url below is set, every entry gets an *additional*
+# acquisition link per listed device, alongside the original EPUB link, from
+# your own proxy instance. Leave base_url empty to disable this entirely
+# (the default) -- it requires you to actually run epub-proxy/ somewhere.
+epub_proxy:
+  base_url: ""            # e.g. "https://epub-proxy.example.com"
+  devices: []              # e.g. ["X4"] -- see epub-proxy/README.md for profiles

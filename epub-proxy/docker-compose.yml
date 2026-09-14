@@ -1,0 +1,15 @@
+services:
+  epub-proxy:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - epub-cache:/data/cache
+    environment:
+      - ALLOWED_SOURCE_HOSTS=jw-cdn.org
+      - JPEG_QUALITY=85
+      - SOURCE_FETCH_TIMEOUT=60
+    restart: unless-stopped
+
+volumes:
+  epub-cache:

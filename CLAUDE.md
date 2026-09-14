@@ -13,6 +13,12 @@ Disclaimer section — it must stay intact and prominent in any future README
 edits: this project is not affiliated with jw.org / the Watch Tower Bible
 and Tract Society.
 
+The one deliberate exception is `epub-proxy/` (see its own README) — an
+optional, off-by-default, separately self-hosted Docker service that DOES
+fetch/transform/cache content, for readers whose EPUB rendering needs
+device-specific optimization. It's a distinct deployable from the main
+`jw2opds` package and not run by this repo's own GitHub Actions workflow.
+
 ## Commands
 
 ```
@@ -122,6 +128,20 @@ DB. `state.sqlite3` **is** committed to git (small, holds per-entry
 `last_checked` timestamps so `recheck_days` can skip re-probing everything
 on every run) — unlike `catalog.db`, which never is.
 
+### `epub-proxy/` (optional, separate deployable)
+
+Not part of the main `jw2opds` Python package or its GitHub Actions
+workflow -- a standalone Flask service (own `Dockerfile`/`requirements.txt`)
+you self-host if you want it. `GET /optimize/<device>.epub?src=<url>` fetches
+`src` (must be on `ALLOWED_SOURCE_HOSTS`, default `jw-cdn.org`, so it can't be
+used as a general open proxy), runs it through `optimizer/` -- vendored
+unmodified from `crosspoint-reader/calibre-plugins` (MIT, see
+`THIRD_PARTY_LICENSES.md`) -- caches the result keyed by
+`sha256(device|src)`, and serves it. `jw2opds`'s own `opds.py` links to it
+(an *additional* acquisition link per entry, alongside the original) only
+when `config.yaml`'s `epub_proxy.base_url` is set; empty (the default)
+means no proxy links are generated at all.
+
 ## Hard-won lessons (don't rediscover these)
 
 - **CrossPoint Reader (and likely other minimal/embedded OPDS clients) caps
@@ -148,6 +168,20 @@ on every run) — unlike `catalog.db`, which never is.
   valid per RFC 3986 and were tried first (see git history) specifically
   for local-testing convenience -- don't revert to them without fixing this
   client-side bug upstream first, or you'll reintroduce this breakage.
+- **CrossPoint Reader's EPUB renderer is severely constrained** (~380KB RAM):
+  JPEG/PNG only (no GIF/WebP/SVG, no embedded fonts at all), a hand-rolled
+  CSS subset (~19 properties, no descendant selectors/media queries), and a
+  single `<p>` over ~6KB or a spine file over ~9.5KB can crash the device.
+  `epub-proxy/`'s vendored optimizer handles all of this -- don't
+  reimplement any of it from scratch, and don't assume a "valid EPUB" is
+  automatically a "renders fine on CrossPoint" EPUB.
+- **In `epub-proxy/app.py`, the temp working directory for a request MUST be
+  created inside `CACHE_DIR`** (`tempfile.TemporaryDirectory(dir=CACHE_DIR)`),
+  not the default `/tmp`. Docker mounts `CACHE_DIR` as a separate volume, and
+  the final `os.replace()` from a scratch file into the cache is an atomic
+  rename that only works within the same filesystem -- across the volume
+  boundary it raises `OSError: Invalid cross-device link`, discovered by
+  actually running the container, not by reading the code.
 - **This repo has its own git identity** (`git config user.name/email`,
   repo-local, not global) — `ca-za <carlo.speranza@gmail.com>` — set
   deliberately after an earlier mistake where commits picked up the

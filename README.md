@@ -31,6 +31,12 @@ catalog comes straight from jw.org, under whatever terms jw.org itself
 publishes it — this project has no control over, and makes no claims about,
 that content or its availability.
 
+(The one exception: `epub-proxy/`, an entirely optional, off-by-default
+component described further down, which — only if *you* choose to run it on
+your own infrastructure — fetches, transforms, and caches a copy of a
+publication to optimize it for a specific e-reader. It is not run, hosted,
+or linked to by this project itself.)
+
 ## How it works
 
 1. jw.org publishes a versioned SQLite database of every known publication
@@ -104,3 +110,31 @@ See `config.example.yaml` for every option with comments. Key ones:
 - `base_url` — set only if you want absolute links in the feeds; otherwise
   links are relative and resolve fine against whatever URL the reader used
   to fetch the feed (including a GitHub Pages URL).
+- `epub_proxy` — optional, points at a self-hosted device-optimized-EPUB
+  proxy (see `epub-proxy/`). See below.
+
+## Device-optimized EPUBs (optional)
+
+Some e-readers render plain EPUBs poorly — oversized images, embedded fonts
+they can't use, single chapters too large for their RAM (confirmed on
+[CrossPoint Reader](https://crosspointreader.com), an ESP32 e-ink device: a
+single ~6KB paragraph can crash it). `epub-proxy/` is a small, self-hosted
+Docker service that fetches a source EPUB on demand, runs it through
+CrossPoint's own device-optimization pipeline (reused as-is from their
+[calibre-plugins](https://github.com/crosspoint-reader/calibre-plugins)
+repo — resize/grayscale/re-encode images, split oversized paragraphs and
+chapters, strip unusable embedded fonts), caches the result, and serves it.
+
+It's entirely optional and off by default. This project itself doesn't run
+or link to any instance of it — set it up yourself (`epub-proxy/README.md`)
+and point your own `config.yaml` at your own instance:
+
+```yaml
+epub_proxy:
+  base_url: "https://your-proxy.example.com"
+  devices: ["X4"]
+```
+
+When set, every entry gets an *additional* acquisition link per configured
+device, alongside the original jw.org link — other readers just ignore the
+extra option.
