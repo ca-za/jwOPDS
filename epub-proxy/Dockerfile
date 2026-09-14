@@ -5,7 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app.py .
+COPY app.py koreader_css.py .
 COPY optimizer/ optimizer/
 
 ENV CACHE_DIR=/data/cache

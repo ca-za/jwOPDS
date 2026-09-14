@@ -3,11 +3,30 @@
 GET /optimize/<device>.epub?src=<url>&checksum=<md5, optional>
 
 Fetches the EPUB at `src` (must be on an allowlisted host), runs it through
-CrossPoint Reader's own optimizer (see optimizer/, vendored from
-crosspoint-reader/calibre-plugins), caches the result on disk keyed by
+a device-specific transformation, caches the result on disk keyed by
 (src, device, checksum), and serves it. Never stores or serves anything
 from a host not on ALLOWED_SOURCE_HOSTS -- this is a transformer for a
 specific known source, not a general-purpose open proxy.
+
+Two independent, unrelated transformations live behind the same endpoint,
+selected by `device`:
+
+- `x4`/`x3`: CrossPoint Reader's own device-optimization pipeline (see
+  optimizer/, vendored from crosspoint-reader/calibre-plugins) -- resizes/
+  grayscales images to the device's screen and splits oversized paragraphs/
+  chapters, because CrossPoint's ~380KB-RAM firmware chokes on large images
+  and can crash on a single large paragraph or chapter file.
+- `koreader`: strips CSS rules that can never match anything in the book's
+  actual content (see koreader_css.py) -- confirmed via a real GitHub issue
+  filed against this exact publisher's Daily Text EPUB, and crengine's own
+  source, that KOReader's CSS matcher is pathologically slow (not just
+  "big book slow", a specific quadratic-ish blowup) against jw.org's
+  bundled ~18,000-rule, ~92%-unused site-wide stylesheet. This does NOT
+  touch images or split anything -- KOReader runs on real, varied hardware
+  (not one fixed screen size) and paragraph/chapter splitting would make
+  its problem *worse* (more nodes = more of the exact per-node cost that's
+  already the bottleneck), so CrossPoint's pipeline is deliberately not
+  reused here despite the similar-sounding "device profile" framing.
 
 `checksum` is jw.org's own reported MD5 for the file (jw2opds already has
 it from GETPUBMEDIALINKS and passes it along when it links here). Folding
@@ -33,7 +52,15 @@ from urllib.parse import urlparse
 import requests
 from flask import Flask, abort, request, send_file
 
+from koreader_css import prune_unused_css
 from optimizer.optimizer import DEVICE_PROFILES, Options, optimize_epub
+
+# CrossPoint's own image-resize device profiles, plus our own CSS-pruning
+# pass for KOReader -- a distinct, resolution-independent transformation
+# with no width/height of its own (see module docstring for why it's not
+# just a third entry in DEVICE_PROFILES).
+KOREADER_DEVICE = "KOREADER"
+VALID_DEVICES = set(DEVICE_PROFILES) | {KOREADER_DEVICE}
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
@@ -255,8 +282,8 @@ def _check_zip_safety(path: Path) -> None:
 @app.get("/optimize/<device>.epub")
 def optimize(device: str):
     device = device.upper()
-    if device not in DEVICE_PROFILES:
-        abort(400, f"unknown device {device!r}, expected one of {sorted(DEVICE_PROFILES)}")
+    if device not in VALID_DEVICES:
+        abort(400, f"unknown device {device!r}, expected one of {sorted(VALID_DEVICES)}")
 
     src = request.args.get("src")
     if not src:
@@ -281,9 +308,12 @@ def optimize(device: str):
                 out_path = Path(tmp) / "out.epub"
                 _download(src, in_path, checksum)
                 _check_zip_safety(in_path)
-                profile = DEVICE_PROFILES[device]
-                opts = Options(quality=JPEG_QUALITY)
-                optimize_epub(str(in_path), str(out_path), profile, opts, log_fn=log.info)
+                if device == KOREADER_DEVICE:
+                    prune_unused_css(str(in_path), str(out_path), log_fn=log.info)
+                else:
+                    profile = DEVICE_PROFILES[device]
+                    opts = Options(quality=JPEG_QUALITY)
+                    optimize_epub(str(in_path), str(out_path), profile, opts, log_fn=log.info)
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(out_path, cache_path)
         except SourceError as e:

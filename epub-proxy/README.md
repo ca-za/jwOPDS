@@ -1,19 +1,44 @@
 # epub-proxy
 
-An on-demand EPUB optimizer, self-hosted as a Docker container. Some
-e-readers (confirmed: [CrossPoint Reader](https://crosspointreader.com), an
-ESP32-based e-ink device) render plain EPUBs poorly or not at all --
-oversized images, embedded fonts it can't use, single paragraphs/chapter
-files too large for its ~380KB of RAM. This service fetches a source EPUB,
-runs it through CrossPoint's own device-optimization pipeline (vendored
-from their [calibre-plugins](https://github.com/crosspoint-reader/calibre-plugins)
-repo -- see `THIRD_PARTY_LICENSES.md`), caches the result, and serves it.
+An on-demand EPUB transformer, self-hosted as a Docker container. Different
+e-readers choke on jw.org's raw EPUBs for entirely different reasons, so
+this fetches a source EPUB, runs it through a device-specific fix, caches
+the result, and serves it:
+
+- **`x4`/`x3`** -- [CrossPoint Reader](https://crosspointreader.com), an
+  ESP32 e-ink device with ~380KB of RAM: chokes on oversized images,
+  embedded fonts, and single paragraphs/chapter files that are too large.
+  Runs CrossPoint's own device-optimization pipeline (vendored from their
+  [calibre-plugins](https://github.com/crosspoint-reader/calibre-plugins)
+  repo -- see `THIRD_PARTY_LICENSES.md`): resize/grayscale images to the
+  device's screen, split oversized paragraphs/chapters, strip fonts.
+- **`koreader`** -- [KOReader](https://koreader.rocks/) (runs on real
+  hardware: Kobo, Kindle, Android, desktop) doesn't have CrossPoint's RAM
+  problem, but jw.org bundles their *entire site-wide CSS framework* --
+  including a complete icon-font glyph map -- into every single EPUB. A
+  real Daily Text book carries an 18,784-rule, 1.67MB stylesheet of which
+  only ~8% is ever used. This is directly confirmed as the cause of
+  KOReader hanging/taking "dozens of minutes" to open jw.org books: an open
+  GitHub issue ([koreader/koreader#14021](https://github.com/koreader/koreader/issues/14021))
+  was filed against this exact publisher's Daily Text EPUB, and crengine's
+  own source (`lvstsheet.cpp`) confirms why -- its CSS matcher buckets
+  selectors by tag name, but the ~17,000 unused *tag-less* class selectors
+  (exactly what jw.org's icon rules are) all fall into one shared bucket
+  walked in full *for every node in the document*. `koreader_css.py`
+  strips every CSS rule that's provably unreachable given the book's own
+  markup (verified safe: it never removes a rule that could actually
+  apply, including handling `:not()`/`:is()` correctly -- see the module's
+  own docstring for two real bugs found and fixed while building this
+  against an actual jw.org file). This does *not* touch images or split
+  anything: KOReader isn't RAM-constrained the way CrossPoint is, and
+  splitting would make its actual bottleneck (per-node CSS matching cost)
+  worse by increasing the node count, not better.
 
 It is a narrow transformer, not a general-purpose proxy: it only fetches
 from hosts on `ALLOWED_SOURCE_HOSTS` (default: `jw-cdn.org`), re-checks that
 allowlist against the *final* URL after redirects (not just the requested
 one), and rejects sources over `MAX_DOWNLOAD_BYTES`/`MAX_UNCOMPRESSED_BYTES`
-(zip-bomb protection) before handing them to the optimizer.
+(zip-bomb protection) before handing them to either transformation.
 
 This is a public, unauthenticated endpoint that does real work (network
 fetch + image/XML processing) per request, so **rate limiting is expected
@@ -28,7 +53,7 @@ GET /optimize/<device>.epub?src=<url-encoded source EPUB URL>&checksum=<md5, opt
 ```
 
 - `<device>`: `x4` (480x800) or `x3` (528x792) -- CrossPoint's own device
-  profiles.
+  profiles -- or `koreader` (CSS-only, no fixed resolution).
 - `src`: the original EPUB URL. Must be on an allowlisted host or the
   request is rejected with 403.
 - `checksum`: jw.org's own reported MD5 for the file (jw2opds already has
@@ -81,8 +106,8 @@ In the main `jw2opds` project's `config.yaml`:
 
 ```yaml
 epub_proxy:
-  base_url: "https://your-proxy.example.com"   # empty disables this feature
-  devices: ["X4"]                               # which profiles to also link
+  base_url: "https://your-proxy.example.com"     # empty disables this feature
+  devices: ["X4", "KOREADER"]                     # which profiles to also link
 ```
 
 When set, every generated OPDS entry gets an *additional*

@@ -68,5 +68,5 @@ user_agent: "jw2opds/1.0 (+personal OPDS catalog generator; https://www.jw.org p
 # your own proxy instance. Leave base_url empty to disable this entirely
 # (the default) -- it requires you to actually run epub-proxy/ somewhere.
 epub_proxy:
-  base_url: ""            # e.g. "https://epub-proxy.example.com"
-  devices: []              # e.g. ["X4"] -- see epub-proxy/README.md for profiles
+  base_url: ""                     # e.g. "https://epub-proxy.example.com"
+  devices: []                      # e.g. ["X4", "KOREADER"] -- see epub-proxy/README.md

@@ -134,10 +134,28 @@ Not part of the main `jw2opds` Python package or its GitHub Actions
 workflow -- a standalone Flask service (own `Dockerfile`/`requirements.txt`)
 you self-host if you want it. `GET /optimize/<device>.epub?src=<url>&checksum=<md5>`
 fetches `src` (must be on `ALLOWED_SOURCE_HOSTS`, default `jw-cdn.org`, so it
-can't be used as a general open proxy), runs it through `optimizer/` --
-vendored unmodified from `crosspoint-reader/calibre-plugins` (MIT, see
-`THIRD_PARTY_LICENSES.md`) -- caches the result keyed by
-`sha256(device|checksum|src)`, and serves it. `checksum` is jw.org's own
+can't be used as a general open proxy), routes to ONE of two unrelated
+transformations depending on `device`, caches the result keyed by
+`sha256(device|checksum|src)`, and serves it:
+
+- `X4`/`X3`: `optimizer/`, vendored unmodified from
+  `crosspoint-reader/calibre-plugins` (MIT, see `THIRD_PARTY_LICENSES.md`)
+  -- image resize/grayscale + paragraph/chapter splitting, for CrossPoint
+  Reader's ~380KB-RAM ESP32 firmware.
+- `KOREADER`: `koreader_css.py` -- strips CSS rules unreachable given the
+  book's own markup. **Do not reuse the X4/X3 pipeline for KOReader and do
+  not add a "KOReader device profile" with a width/height** -- confirmed
+  via reading crengine's own source (`lvstsheet.cpp`) that its bottleneck
+  is CSS selector-matching cost (a shared linked-list bucket for tag-less
+  class selectors, walked in full per node -- jw.org's bundled site-wide
+  CSS is ~18,800 rules, ~92% unused, almost all tag-less icon-glyph rules),
+  not image size or paragraph count. The X4/X3 pipeline's paragraph/chapter
+  *splitting* would make KOReader's actual problem *worse* (more nodes),
+  even though it's essential for CrossPoint. Real-world confirmation: an
+  open, unfixed GitHub issue (koreader/koreader#14021) filed against this
+  exact publisher's Daily Text EPUB.
+
+`checksum` is jw.org's own
 reported MD5 (jw2opds already tracks it in `state.sqlite3` from
 GETPUBMEDIALINKS); folding it into the cache key means a content change at
 jw.org invalidates the cached transformation on jw2opds's next sync instead
@@ -177,6 +195,20 @@ store (Redis, etc.) that's actually synchronized across workers.
 
 ## Hard-won lessons (don't rediscover these)
 
+- **`epub-proxy/koreader_css.py`: with `tinycss2`, do NOT paren-depth-track
+  a flat token list to find top-level selector-group commas.** A
+  `:not(...)`/`:is(...)` argument is already a single, self-contained
+  `FunctionBlock` token (its `.type` is `'function'`, contents live in
+  `.arguments`, never spilled into the surrounding list) -- there is no
+  separate literal `(`/`)` token to track. Counting a FunctionBlock as "+1
+  depth" with no matching `)` ever arriving to bring it back down pegs
+  depth at 1 forever after the first `:not()`, silently treating every
+  comma after that as "nested" and never splitting on it. Just split on
+  every top-level comma token, unconditionally -- tinycss2's tree already
+  did the real nesting work. Found by testing against a real jw.org
+  stylesheet: a 3-alternative selector group collapsed into 1, making an
+  otherwise-matchable (and actually used) rule look unmatchable and get
+  wrongly dropped.
 - **CrossPoint Reader (and likely other minimal/embedded OPDS clients) caps
   entries per feed at 62** (confirmed by reading its source). This is *why*
   pagination (`PAGE_SIZE=50`) exists in `opds.py` — it's not defensive
