@@ -1,6 +1,6 @@
 """On-demand EPUB optimizer proxy.
 
-GET /optimize/<device>.epub?src=<url>&checksum=<md5, optional>
+GET /optimize/book.<device>.epub?src=<url>&checksum=<md5, optional>
 
 Fetches the EPUB at `src` (must be on an allowlisted host), runs it through
 a device-specific transformation, caches the result on disk keyed by
@@ -288,8 +288,13 @@ def _check_zip_safety(path: Path) -> None:
         )
 
 
-@app.get("/optimize/<device>.epub")
+@app.get("/optimize/book.<device>.epub")
 def optimize(device: str):
+    # The literal "book." prefix isn't cosmetic: CrossPoint Reader's
+    # (unmerged) OPDS-side PR #3531 scores acquisition links by scanning
+    # the raw href for the substring ".x4.epub"/".x3.epub" (with the dot),
+    # not just "x4"/"x3" -- a path like "/optimize/x4.epub" doesn't contain
+    # ".x4.epub" and would score no higher than the plain original link.
     device = device.upper()
     if device not in VALID_DEVICES:
         abort(400, f"unknown device {device!r}, expected one of {sorted(VALID_DEVICES)}")

@@ -215,8 +215,13 @@ def _entry_element(
         # (see epub-proxy/), alongside the original -- readers that don't
         # need it just ignore the extra link.
         for device in proxy_devices:
+            # "book." prefix (not just "<device>.epub"): CrossPoint Reader's
+            # unmerged OPDS PR (#3531) scores links by scanning the href for
+            # the literal substring ".x4.epub"/".x3.epub" -- "x4.epub" alone
+            # (no leading dot) doesn't match and would score no higher than
+            # any plain .epub link.
             proxy_href = (
-                f"{epub_proxy_base_url.rstrip('/')}/optimize/{device.lower()}.epub"
+                f"{epub_proxy_base_url.rstrip('/')}/optimize/book.{device.lower()}.epub"
                 f"?src={quote(row['epub_url'], safe='')}"
             )
             if row.get("checksum"):

@@ -132,7 +132,7 @@ on every run) — unlike `catalog.db`, which never is.
 
 Not part of the main `jw2opds` Python package or its GitHub Actions
 workflow -- a standalone Flask service (own `Dockerfile`/`requirements.txt`)
-you self-host if you want it. `GET /optimize/<device>.epub?src=<url>&checksum=<md5>`
+you self-host if you want it. `GET /optimize/book.<device>.epub?src=<url>&checksum=<md5>`
 fetches `src` (must be on `ALLOWED_SOURCE_HOSTS`, default `jw-cdn.org`, so it
 can't be used as a general open proxy), routes to ONE of two unrelated
 transformations depending on `device`, caches the result keyed by
@@ -173,6 +173,19 @@ each link's `title` attribute as the button label. So `_entry_element` sets
 these links purely so that unavoidable manual choice is legible instead of
 presenting the user with two generic ".EPUB" buttons -- it does not, and
 cannot, make any reader auto-select the optimized one.
+
+CrossPoint Reader itself has an open, unmerged PR
+([#3531](https://github.com/crosspoint-reader/crosspoint-reader/pull/3531))
+that *would* auto-prefer one acquisition link over another -- its
+`get_file_score()` scans the raw href with `strstr()` for the literal
+substring `.x4.epub`/`.x3.epub` (dot included), ranking that above a plain
+`.epub` match. Verified directly against the PR's diff: a path like
+`/optimize/x4.epub` does NOT contain `.x4.epub` (no dot before "x4") and
+would score no higher than the original link -- so the endpoint's route is
+`/optimize/book.<device>.epub`, not `/optimize/<device>.epub`, specifically
+so our proxy links are already in the exact shape this PR's scoring
+function rewards, with nothing left to change on our side once (if) it
+merges.
 
 Cache eviction (`MAX_CACHE_BYTES`/`MAX_CACHE_FILES`, both unset = unlimited)
 prunes least-recently-*served* entries first -- `_touch()` refreshes an

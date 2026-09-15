@@ -49,8 +49,17 @@ multiple worker processes, so it under-enforces exactly when it matters).
 ## Endpoint
 
 ```
-GET /optimize/<device>.epub?src=<url-encoded source EPUB URL>&checksum=<md5, optional>
+GET /optimize/book.<device>.epub?src=<url-encoded source EPUB URL>&checksum=<md5, optional>
 ```
+
+The `book.` prefix isn't cosmetic: CrossPoint Reader has an open (unmerged)
+PR ([#3531](https://github.com/crosspoint-reader/crosspoint-reader/pull/3531))
+that scores OPDS acquisition links by scanning the raw href for the literal
+substring `.x4.epub`/`.x3.epub` (dot included) to prefer the optimized
+rendition over a plain `.epub` link -- a path like `/optimize/x4.epub`
+doesn't contain `.x4.epub` and would score no higher than the original.
+`book.x4.epub` does, so our links are ready to be auto-preferred the moment
+that PR ships, with no further changes needed on our side.
 
 - `<device>`: `x4` (480x800) or `x3` (528x792) -- CrossPoint's own device
   profiles -- or `koreader` (CSS-only, no fixed resolution).
