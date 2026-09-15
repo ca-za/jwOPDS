@@ -66,6 +66,15 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
 log = app.logger
 
+
+def _optimizer_log(tag: str, message: str) -> None:
+    # optimize_epub/prune_unused_css call log_fn(tag, message) as two plain
+    # strings, not %-style log_fn(msg, *args) -- passing log.info directly
+    # would make it try to substitute `message` into `tag` and raise
+    # "not all arguments converted during string formatting" (tag has no
+    # '%' placeholder of its own).
+    log.info("%s: %s", tag, message)
+
 # This is a public-facing, unauthenticated endpoint that does real work per
 # request (network fetch + image/XML processing), so it should sit behind a
 # reverse proxy that rate-limits it -- see nginx.conf.example. (An in-app
@@ -309,11 +318,11 @@ def optimize(device: str):
                 _download(src, in_path, checksum)
                 _check_zip_safety(in_path)
                 if device == KOREADER_DEVICE:
-                    prune_unused_css(str(in_path), str(out_path), log_fn=log.info)
+                    prune_unused_css(str(in_path), str(out_path), log_fn=_optimizer_log)
                 else:
                     profile = DEVICE_PROFILES[device]
                     opts = Options(quality=JPEG_QUALITY)
-                    optimize_epub(str(in_path), str(out_path), profile, opts, log_fn=log.info)
+                    optimize_epub(str(in_path), str(out_path), profile, opts, log_fn=_optimizer_log)
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(out_path, cache_path)
         except SourceError as e:
